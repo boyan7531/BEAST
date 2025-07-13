@@ -3,6 +3,8 @@ import json
 import torch
 import glob
 from natsort import natsorted
+from torchvision.io.video import read_video
+
 
 # First label: {No Offence, Offence + No Card, Offence + Yellow Card, Offence + Red Card} 
 # Second label: {Standing Tackle, Tackle, Holding, Pushing, Challenge, Dive, High Leg, Elbowing}
@@ -73,16 +75,17 @@ def label_to_numerical(folder_path, split):
         labels_action.append(torch.zeros(1, num_action_classes))
         labels_action[len(labels_action) - 1][0][dictionary_action[action_class]] = 1
         
-        return labels_action, labels_severity, useless_actions
+    return labels_action, labels_severity, useless_actions
     
 
 
-def load_clips(folder_path, split, usless_actions):
+def load_clips(folder_path, split, useless_actions):
     """Load all clip paths for each action in the dataset, excluding useless actions.
     
     Args:
         folder_path: Root folder containing dataset splits
         split: Dataset split (e.g. 'train', 'val')
+        useless_actions: List of actions to exclude from the dataset
         
     Returns:
         Dictionary mapping action names to lists of clip paths
@@ -101,7 +104,8 @@ def load_clips(folder_path, split, usless_actions):
         action_name = os.path.basename(action_dir)
         
         # Skip useless actions
-        if action_name in useless_actions:
+        action_index = action_name.replace("action_", "")
+        if action_index in useless_actions:
             continue
             
         # Find all mp4 files in action directory
