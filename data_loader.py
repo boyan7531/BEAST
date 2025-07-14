@@ -121,9 +121,9 @@ if __name__ == "__main__":
     folder_path = 'mvfouls'
     split = 'train'
     labels_action, labels_severity, useless_actions = label_to_numerical(folder_path, split)
-    print("Action Labels:", labels_action)
-    print("Severity Labels:", labels_severity)
-    print("Useless Actions:", useless_actions)
+    # print("Action Labels:", labels_action)
+    # print("Severity Labels:", labels_severity)
+    # print("Useless Actions:", useless_actions)
     
     # Clip loading example - show first 5 action-clip pairs
     clips = load_clips(folder_path, split, useless_actions)

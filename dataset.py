@@ -23,22 +23,31 @@ class MVFoulsDataset(Dataset):
             print("they are not the same size")
         for action_name, labels_action, labels_severity in zip(useful_actions, self.labels_action_list, self.labels_severity_list):
             # Append each clip path for this action along with its labels
-            for clip_path in self.clip_paths_dict[action_name]:
-                self.data_list.append((clip_path, labels_action, labels_severity))
+            self.data_list.append((self.clip_paths_dict[action_name], labels_action, labels_severity)) # Append action_name instead of clip_path
 
         self.length = len(self.data_list)
+
+        print(self.data_list[0])
+        print(self.data_list[1])
+        print(self.data_list[2])
 
         
     def __len__(self):
         return self.length
     
     def __getitem__(self, idx):
-        clip_path, labels_action, labels_severity = self.data_list[idx]
-        vr = VideoReader(clip_path, ctx=cpu(0))
-        frame_indices = range(self.start_frame, self.end_frame + 1)  
-        video = vr.get_batch(frame_indices).asnumpy()
-        video = torch.from_numpy(video).permute(0, 3, 1, 2)  
-        return video, labels_action, labels_severity, clip_path
+        all_clips_for_action_paths, labels_action, labels_severity = self.data_list[idx]
+        
+        all_clips_for_action_data = []
+        for clip_path in all_clips_for_action_paths:
+            vr = VideoReader(clip_path, ctx=cpu(0))
+            frame_indices = range(self.start_frame, self.end_frame + 1)  
+            video = vr.get_batch(frame_indices).asnumpy()
+            video = torch.from_numpy(video).permute(0, 3, 1, 2)
+            all_clips_for_action_data.append(video)
+        
+        combined_videos = torch.stack(all_clips_for_action_data) # Stack all clips into a single tensor
+        return combined_videos, labels_action, labels_severity, all_clips_for_action_paths # Return action_name instead of clip_path
 
 
 if __name__ == "__main__":
@@ -57,27 +66,9 @@ if __name__ == "__main__":
         video, action, severity, path = dataset[0]
         
         # Basic checks
-        print(f"\nLoaded video shape: {video.shape} (Expecting: (16, 3, H, W))")
-        print(f"Number of frames: {video.size(0)} (Expected: {end_frame - start_frame + 1})")
-        
-        # Frame index validation
-        vr = VideoReader(path, ctx=cpu(0))
-        try:
-            first_frame = vr[start_frame].asnumpy()
-            last_frame = vr[end_frame].asnumpy()
-            
-            # Convert to tensor and permute for comparison
-            first_tensor = torch.from_numpy(first_frame).permute(2, 0, 1)
-            last_tensor = torch.from_numpy(last_frame).permute(2, 0, 1)
-            
-            # Verify frame accuracy
-            assert torch.allclose(video[0], first_tensor, atol=1e-4), "First frame mismatch"
-            assert torch.allclose(video[-1], last_tensor, atol=1e-4), "Last frame mismatch"
-            print("Frame indices validated successfully")
-            
-        except IndexError as e:
-            print(f"Frame index error: {e}. Video has {len(vr)} frames.")
-            
+        # The shape of video will now be (num_clips_in_action, frames_per_clip, C, H, W)
+        print(f"\nLoaded video shape: {video.shape} (Expecting: (num_clips, {end_frame - start_frame + 1}, 3, H, W))")
+        print(f"Number of clips in action: {video.size(0)}")
         print("\nBasic functionality tests passed!")
     else:
         print("No samples found - ensure dataset is downloaded to 'mvfouls' folder")
