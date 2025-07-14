@@ -108,7 +108,7 @@ if __name__ == "__main__":
     print(f"Using device: {DEVICE}")
 
     # Initialize GradScaler for Mixed Precision Training
-    scaler = amp.GradScaler()
+    scaler = amp.GradScaler('cuda') # Updated for newer PyTorch versions
 
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
@@ -124,6 +124,9 @@ if __name__ == "__main__":
         print("No samples in training dataset. Please ensure the dataset is correctly prepared and downloaded.")
         exit()
     
+    print(f"Number of batches in training dataloader: {len(train_dataloader)}")
+    print(f"Number of batches in validation dataloader: {len(val_dataloader)}")
+
     # 3. Initialize Model, Loss Functions, and Optimizer
     model = MVFoulsModel().to(DEVICE)
     
@@ -175,7 +178,7 @@ if __name__ == "__main__":
             severity_labels = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
             # Forward pass with automatic mixed precision
-            with amp.autocast():
+            with amp.autocast('cuda'): # Updated for newer PyTorch versions
                 action_logits, severity_logits = model(videos)
 
                 # Calculate loss
@@ -206,23 +209,21 @@ if __name__ == "__main__":
         torch.save(model.state_dict(), model_save_path)
         print(f"Model saved to {model_save_path}")
 
-    # 5. Evaluation Loop
-    print("\nStarting validation...")
-    model.eval() # Set model to evaluation mode
-    val_running_loss = 0.0
-    all_action_labels = []
-    all_predicted_actions = []
-    all_severity_labels = []
-    all_predicted_severities = []
+        # 5. Evaluation Loop
+        print("\nStarting validation...")
+        model.eval() # Set model to evaluation mode
+        val_running_loss = 0.0
+        all_action_labels = []
+        all_predicted_actions = []
+        all_severity_labels = []
+        all_predicted_severities = []
 
-    if len(val_dataset) == 0:
-        print("No samples in validation dataset. Skipping validation.")
-    else:
-        with torch.no_grad(): # Disable gradient calculation for validation
-            # Add tqdm for progress bar
-            try:
+        if len(val_dataset) == 0:
+            print("No samples in validation dataset. Skipping validation.")
+        else:
+            with torch.no_grad(): # Disable gradient calculation for validation
+                # Add tqdm for progress bar
                 for i, (videos, action_labels, severity_labels) in enumerate(tqdm(val_dataloader, desc="Validation")):
-                    print(f"Processing validation batch {i+1}") # Debugging print
                     # For testing, break after a specified number of batches if TEST_BATCHES > 0
                     if TEST_BATCHES > 0 and i >= TEST_BATCHES:
                         print(f"Reached {TEST_BATCHES} batches for testing, breaking validation loop.")
@@ -232,7 +233,7 @@ if __name__ == "__main__":
                     action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
                     severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
-                    with amp.autocast():
+                    with amp.autocast('cuda'): # Updated for newer PyTorch versions
                         action_logits, severity_logits = model(videos)
 
                         loss_action = criterion_action(action_logits, action_labels_idx)
@@ -249,34 +250,29 @@ if __name__ == "__main__":
                     all_severity_labels.extend(severity_labels_idx.cpu().numpy())
                     all_predicted_severities.extend(predicted_severities.cpu().numpy())
 
-            except Exception as e:
-                print(f"An error occurred during validation dataloader iteration: {e}")
-                print("Please check the dataset and dataloader configuration.")
-                exit()
+            if len(all_action_labels) > 0:
+                # Calculate and print metrics for action classification
+                action_accuracy = accuracy_score(all_action_labels, all_predicted_actions)
+                action_precision, action_recall, action_f1, _ = precision_recall_fscore_support(all_action_labels, all_predicted_actions, average='macro', zero_division=0)
 
-        if len(all_action_labels) > 0:
-            # Calculate and print metrics for action classification
-            action_accuracy = accuracy_score(all_action_labels, all_predicted_actions)
-            action_precision, action_recall, action_f1, _ = precision_recall_fscore_support(all_action_labels, all_predicted_actions, average='macro', zero_division=0)
+                print(f"\nAction Classification Metrics:")
+                print(f"  Accuracy: {action_accuracy:.4f}")
+                print(f"  Macro Recall: {action_recall:.4f}")
+                print(f"  Macro F1-score: {action_f1:.4f}")
 
-            print(f"\nAction Classification Metrics:")
-            print(f"  Accuracy: {action_accuracy:.4f}")
-            print(f"  Macro Recall: {action_recall:.4f}")
-            print(f"  Macro F1-score: {action_f1:.4f}")
+                # Calculate and print metrics for severity classification
+                severity_accuracy = accuracy_score(all_severity_labels, all_predicted_severities)
+                severity_precision, severity_recall, severity_f1, _ = precision_recall_fscore_support(all_severity_labels, all_predicted_severities, average='macro', zero_division=0)
 
-            # Calculate and print metrics for severity classification
-            severity_accuracy = accuracy_score(all_severity_labels, all_predicted_severities)
-            severity_precision, severity_recall, severity_f1, _ = precision_recall_fscore_support(all_severity_labels, all_predicted_severities, average='macro', zero_division=0)
+                print(f"\nSeverity Classification Metrics:")
+                print(f"  Accuracy: {severity_accuracy:.4f}")
+                print(f"  Macro Recall: {severity_recall:.4f}")
+                print(f"  Macro F1-score: {severity_f1:.4f}")
+                
+                current_batches_processed_val = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
+                avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
+                print(f"Validation Loss: {avg_val_loss:.4f}")
+            else:
+                print("No samples processed in validation.")
 
-            print(f"\nSeverity Classification Metrics:")
-            print(f"  Accuracy: {severity_accuracy:.4f}")
-            print(f"  Macro Recall: {severity_recall:.4f}")
-            print(f"  Macro F1-score: {severity_f1:.4f}")
-            
-            current_batches_processed_val = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
-            avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
-            print(f"Validation Loss: {avg_val_loss:.4f}")
-        else:
-            print("No samples processed in validation.")
-
-    print("\nTraining complete!")
+    print("\nTraining complete!") # This final print is outside the loop
