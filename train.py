@@ -13,6 +13,7 @@ import random
 import numpy as np
 import torch.cuda.amp as amp
 from collections import Counter
+import torch.optim.lr_scheduler # Import lr_scheduler
 
 # Define Focal Loss
 class FocalLoss(nn.Module):
@@ -210,6 +211,9 @@ if __name__ == "__main__":
         {'params': model.severity_head.parameters()}
     ], lr=LEARNING_RATE) # Default LR for custom heads
 
+    # Initialize learning rate scheduler
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+
     print("Training setup complete. Starting training loop...")
 
     # Create a directory for saving models if it doesn't exist
@@ -332,6 +336,9 @@ if __name__ == "__main__":
                 current_batches_processed_val = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
                 avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
                 print(f"Validation Loss: {avg_val_loss:.4f}")
+
+                # Step the learning rate scheduler
+                scheduler.step(avg_val_loss)
             else:
                 print("No samples processed in validation.")
 

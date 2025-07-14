@@ -54,8 +54,8 @@ class MVFoulsModel(nn.Module):
         self.shared_head = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, hidden_dim), # Add another linear layer
-            nn.GELU(), # Add another GELU activation
+            nn.Linear(hidden_dim, hidden_dim), 
+            nn.GELU(), 
             nn.Dropout(0.3)
         )
 
@@ -63,8 +63,16 @@ class MVFoulsModel(nn.Module):
         self.attention_module = MultiClipAttention(in_features)
 
         # Define new classification heads for action and severity, connected to the shared head
-        self.action_head = nn.Linear(hidden_dim, 8)  # 8 classes for action
-        self.severity_head = nn.Linear(hidden_dim, 4) # 4 classes for severity
+        self.action_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 8)  # 8 classes for action
+        )
+        self.severity_head = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, 4) # 4 classes for severity
+        )
 
     def forward(self, x: list[torch.Tensor]):
         # x is now expected to be a list of tensors, where each tensor is
