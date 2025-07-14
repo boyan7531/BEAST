@@ -27,10 +27,6 @@ class MVFoulsDataset(Dataset):
 
         self.length = len(self.data_list)
 
-        print(self.data_list[0])
-        print(self.data_list[1])
-        print(self.data_list[2])
-
         
     def __len__(self):
         return self.length
@@ -45,9 +41,19 @@ class MVFoulsDataset(Dataset):
             video = vr.get_batch(frame_indices).asnumpy()
             video = torch.from_numpy(video).permute(0, 3, 1, 2)
             all_clips_for_action_data.append(video)
-        
+        # the shape for combined_videos is (num_clips_for_this_action, C, num_frames, H, W)
         combined_videos = torch.stack(all_clips_for_action_data) # Stack all clips into a single tensor
-        return combined_videos, labels_action, labels_severity, all_clips_for_action_paths # Return action_name instead of clip_path
+        return combined_videos, labels_action, labels_severity
+
+def custom_collate_fn(batch):
+    # 'batch' is a list of tuples: [(video_0, action_label_0, severity_label_0), (video_1, action_label_1, severity_label_1), ...]
+    # where video_i has shape (num_clips_for_action_i, C, num_frames, H, W)
+
+    videos = [item[0] for item in batch] # This will be the list of tensors for the model's forward pass
+    action_labels = torch.cat([item[1] for item in batch], dim=0) # Concatenate action labels
+    severity_labels = torch.cat([item[2] for item in batch], dim=0) # Concatenate severity labels
+
+    return videos, action_labels, severity_labels
 
 
 if __name__ == "__main__":
@@ -60,15 +66,23 @@ if __name__ == "__main__":
     # Initialize dataset
     dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame)
     
-    # Get first sample
+    # Test custom collate function with a small batch
+    from torch.utils.data import DataLoader
     
+    # Create a DataLoader with the custom collate_fn
+    dataloader = DataLoader(dataset, batch_size=5, shuffle=False, collate_fn=custom_collate_fn)
+    
+    # Get a batch
     if len(dataset) > 0:
-        video, action, severity, path = dataset[0]
+        batch_videos, batch_action_labels, batch_severity_labels = next(iter(dataloader))
         
-        # Basic checks
-        # The shape of video will now be (num_clips_in_action, frames_per_clip, C, H, W)
-        print(f"\nLoaded video shape: {video.shape} (Expecting: (num_clips, {end_frame - start_frame + 1}, 3, H, W))")
-        print(f"Number of clips in action: {video.size(0)}")
-        print("\nBasic functionality tests passed!")
+        print(f"\nBatch of videos is a list of {len(batch_videos)} tensors.")
+        for i, video_tensor in enumerate(batch_videos):
+            print(f"  Video {i} shape: {video_tensor.shape}")
+        
+        print(f"Batch action labels shape: {batch_action_labels.shape}")
+        print(f"Batch severity labels shape: {batch_severity_labels.shape}")
+        
+        print("\nCustom collate function test passed!")
     else:
         print("No samples found - ensure dataset is downloaded to 'mvfouls' folder")

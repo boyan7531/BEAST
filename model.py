@@ -61,27 +61,29 @@ class MVFoulsModel(nn.Module):
         self.action_head = nn.Linear(hidden_dim, 8)  # 8 classes for action
         self.severity_head = nn.Linear(hidden_dim, 4) # 4 classes for severity
 
-    def forward(self, x):
-        # x is expected to be (batch_size, num_clips, C, num_frames, H, W)
-        batch_size, num_clips, C, num_frames, H, W = x.size()
+    def forward(self, x: list[torch.Tensor]):
+        # x is now expected to be a list of tensors, where each tensor is
+        # (num_clips_for_this_action, C, num_frames, H, W)
+        
+        # Store original batch sizes (number of clips per action)
+        num_clips_per_action_batch = [item.size(0) for item in x]
 
-        # Reshape for backbone processing: (batch_size * num_clips, C, num_frames, H, W)
-        x = x.view(batch_size * num_clips, C, num_frames, H, W)
+        # Concatenate all clips from the batch into a single tensor for backbone processing
+        # This allows processing all clips efficiently in one go
+        all_clips_batch = torch.cat(x, dim=0)
 
         # Get the features from the backbone model for each individual clip
-        clip_features = self.model(x) # (batch_size * num_clips, in_features)
+        clip_features = self.model(all_clips_batch) # (total_num_clips, in_features)
 
-        # Reshape clip_features to apply attention per action
-        # (batch_size, num_clips, in_features)
-        clip_features = clip_features.view(batch_size, num_clips, -1)
+        # Split the features back into individual action features based on original clip counts
+        # This results in a list of tensors, where each tensor is (num_clips_for_this_action, in_features)
+        split_clip_features = torch.split(clip_features, num_clips_per_action_batch)
 
         # Apply attention for each action in the batch
-        # We need to iterate through the batch to apply attention per action independently
         aggregated_features_batch = []
-        for i in range(batch_size):
-            # Pass all clips for a single action through the attention module
+        for single_action_clip_features in split_clip_features:
             # attention_module expects (num_clips, embed_dim)
-            aggregated_feature = self.attention_module(clip_features[i]) # (in_features)
+            aggregated_feature = self.attention_module(single_action_clip_features) # (in_features)
             aggregated_features_batch.append(aggregated_feature)
         
         # Stack the aggregated features back into a batch tensor
@@ -127,8 +129,16 @@ if __name__ == "__main__":
     height = 224
     width = 224
     # Update dummy input shape to include num_clips_per_action
-    dummy_input = torch.randn(batch_size, num_clips_per_action, 3, num_frames, height, width)
-    print(f"Created dummy input with shape: {dummy_input.shape}")
+    # dummy_input = torch.randn(batch_size, num_clips_per_action, 3, num_frames, height, width)
+
+    # Create a list of dummy inputs with varying number of clips per action
+    dummy_input = []
+    for i in range(batch_size):
+        # Varying num_clips_per_action for each item in the batch
+        current_num_clips = 2 if i % 2 == 0 else 4 # Example: 2 clips for even batch items, 4 for odd
+        dummy_input.append(torch.randn(current_num_clips, 3, num_frames, height, width))
+    
+    print(f"Created dummy input as a list of tensors. Example shapes: {[item.shape for item in dummy_input]}")
 
     # Pass dummy input through the model
     try:
@@ -139,6 +149,7 @@ if __name__ == "__main__":
         exit()
 
     # Assert output shapes
+    # The batch_size here refers to the number of actions in the batch, not total clips
     expected_action_shape = torch.Size([batch_size, 8])
     expected_severity_shape = torch.Size([batch_size, 4])
 
