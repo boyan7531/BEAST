@@ -54,6 +54,8 @@ class MVFoulsModel(nn.Module):
         self.shared_head = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim), # Add another linear layer
+            nn.GELU(), # Add another GELU activation
             nn.Dropout(0.3)
         )
 
