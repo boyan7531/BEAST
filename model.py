@@ -40,7 +40,7 @@ class MVFoulsModel(nn.Module):
     def __init__(self):
         super().__init__()
         weights = MViT_V2_S_Weights.KINETICS400_V1
-        self.model = mvit_v2_s(weights=weights)
+        self.model = mvit_v2_s(weights=weights, progress=True)
 
         # Get the number of input features from the backbone.
         # 1 because 0 is the dropout layer

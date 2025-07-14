@@ -5,3 +5,4 @@ __pycache__
 *.pyd
 __pycache__
 *.so
+models/
