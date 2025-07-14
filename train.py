@@ -178,7 +178,7 @@ if __name__ == "__main__":
             severity_labels = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
             # Forward pass with automatic mixed precision
-            with torch.amp.autocast():
+            with torch.amp.autocast(device_type='cuda'):
                 action_logits, severity_logits = model(videos)
 
                 # Calculate loss
@@ -233,7 +233,7 @@ if __name__ == "__main__":
                     action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
                     severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
-                    with torch.amp.autocast():
+                    with torch.amp.autocast(device_type='cuda'):
                         action_logits, severity_logits = model(videos)
 
                         loss_action = criterion_action(action_logits, action_labels_idx)
