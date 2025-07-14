@@ -72,6 +72,7 @@ if __name__ == "__main__":
     parser.add_argument('--focal_loss_gamma', type=float, default=2.0, help='Gamma parameter for Focal Loss')
     parser.add_argument('--num_workers', type=int, default=8, help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--accumulation_steps', type=int, default=1, help='Number of batches to accumulate gradients over')
 
     args = parser.parse_args()
 
@@ -88,6 +89,7 @@ if __name__ == "__main__":
     FOCAL_LOSS_ALPHA = args.focal_loss_alpha
     FOCAL_LOSS_GAMMA = args.focal_loss_gamma
     NUM_WORKERS = args.num_workers
+    ACCUMULATION_STEPS = args.accumulation_steps
 
     # Hardcoded values for removed arguments
     DATA_FOLDER = "mvfouls"
@@ -168,9 +170,6 @@ if __name__ == "__main__":
             action_labels = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
             severity_labels = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
-            # Zero the parameter gradients
-            optimizer.zero_grad()
-
             # Forward pass
             action_logits, severity_logits = model(videos)
 
@@ -179,11 +178,18 @@ if __name__ == "__main__":
             loss_severity = criterion_severity(severity_logits, severity_labels)
             total_loss = loss_action + loss_severity # Combine losses
 
-            # Backward pass and optimize
+            # Normalize loss to account for accumulation
+            total_loss = total_loss / ACCUMULATION_STEPS
+
+            # Backward pass (gradients are accumulated)
             total_loss.backward()
-            optimizer.step()
 
             running_loss += total_loss.item()
+
+            # Perform optimizer step and zero gradients only after ACCUMULATION_STEPS batches
+            if (i + 1) % ACCUMULATION_STEPS == 0 or (TEST_BATCHES > 0 and (i + 1) == TEST_BATCHES) or (i + 1) == len(train_dataloader):
+                optimizer.step()
+                optimizer.zero_grad() # Clear gradients for the next accumulation cycle
 
         current_batches_processed = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
         avg_train_loss = running_loss / current_batches_processed if current_batches_processed > 0 else 0.0
