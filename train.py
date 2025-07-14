@@ -11,6 +11,7 @@ from sklearn.metrics import precision_recall_fscore_support, accuracy_score # Im
 import torch.nn.functional as F
 import random
 import numpy as np
+import torch.cuda.amp as amp
 
 # Define Focal Loss
 class FocalLoss(nn.Module):
@@ -106,14 +107,17 @@ if __name__ == "__main__":
 
     print(f"Using device: {DEVICE}")
 
+    # Initialize GradScaler for Mixed Precision Training
+    scaler = amp.GradScaler()
+
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
     train_dataset = MVFoulsDataset(DATA_FOLDER, TRAIN_SPLIT, START_FRAME, END_FRAME)
-    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS)
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
     
     # Initialize validation dataset and dataloader
     val_dataset = MVFoulsDataset(DATA_FOLDER, VAL_SPLIT, START_FRAME, END_FRAME)
-    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS)
+    val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
 
     # Check if datasets have samples
     if len(train_dataset) == 0:
@@ -170,25 +174,27 @@ if __name__ == "__main__":
             action_labels = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
             severity_labels = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
-            # Forward pass
-            action_logits, severity_logits = model(videos)
+            # Forward pass with automatic mixed precision
+            with amp.autocast():
+                action_logits, severity_logits = model(videos)
 
-            # Calculate loss
-            loss_action = criterion_action(action_logits, action_labels)
-            loss_severity = criterion_severity(severity_logits, severity_labels)
-            total_loss = loss_action + loss_severity # Combine losses
+                # Calculate loss
+                loss_action = criterion_action(action_logits, action_labels)
+                loss_severity = criterion_severity(severity_logits, severity_labels)
+                total_loss = loss_action + loss_severity # Combine losses
 
             # Normalize loss to account for accumulation
             total_loss = total_loss / ACCUMULATION_STEPS
 
             # Backward pass (gradients are accumulated)
-            total_loss.backward()
+            scaler.scale(total_loss).backward()
 
             running_loss += total_loss.item()
 
             # Perform optimizer step and zero gradients only after ACCUMULATION_STEPS batches
             if (i + 1) % ACCUMULATION_STEPS == 0 or (TEST_BATCHES > 0 and (i + 1) == TEST_BATCHES) or (i + 1) == len(train_dataloader):
-                optimizer.step()
+                scaler.step(optimizer)
+                scaler.update()
                 optimizer.zero_grad() # Clear gradients for the next accumulation cycle
 
         current_batches_processed = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
@@ -214,31 +220,39 @@ if __name__ == "__main__":
     else:
         with torch.no_grad(): # Disable gradient calculation for validation
             # Add tqdm for progress bar
-            for i, (videos, action_labels, severity_labels) in enumerate(tqdm(val_dataloader, desc="Validation")):
-                # For testing, break after a specified number of batches if TEST_BATCHES > 0
-                if TEST_BATCHES > 0 and i >= TEST_BATCHES:
-                    print(f"Reached {TEST_BATCHES} batches for testing, breaking validation loop.")
-                    break
+            try:
+                for i, (videos, action_labels, severity_labels) in enumerate(tqdm(val_dataloader, desc="Validation")):
+                    print(f"Processing validation batch {i+1}") # Debugging print
+                    # For testing, break after a specified number of batches if TEST_BATCHES > 0
+                    if TEST_BATCHES > 0 and i >= TEST_BATCHES:
+                        print(f"Reached {TEST_BATCHES} batches for testing, breaking validation loop.")
+                        break
 
-                videos = [video.to(DEVICE) for video in videos]
-                action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
-                severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
+                    videos = [video.to(DEVICE) for video in videos]
+                    action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
+                    severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
-                action_logits, severity_logits = model(videos)
+                    with amp.autocast():
+                        action_logits, severity_logits = model(videos)
 
-                loss_action = criterion_action(action_logits, action_labels_idx)
-                loss_severity = criterion_severity(severity_logits, severity_labels_idx)
-                total_loss = loss_action + loss_severity
-                val_running_loss += total_loss.item()
+                        loss_action = criterion_action(action_logits, action_labels_idx)
+                        loss_severity = criterion_severity(severity_logits, severity_labels_idx)
+                        total_loss = loss_action + loss_severity
+                    val_running_loss += total_loss.item()
 
-                # Collect predictions and true labels for metrics
-                _, predicted_actions = torch.max(action_logits, 1)
-                _, predicted_severities = torch.max(severity_logits, 1)
+                    # Collect predictions and true labels for metrics
+                    _, predicted_actions = torch.max(action_logits, 1)
+                    _, predicted_severities = torch.max(severity_logits, 1)
 
-                all_action_labels.extend(action_labels_idx.cpu().numpy())
-                all_predicted_actions.extend(predicted_actions.cpu().numpy())
-                all_severity_labels.extend(severity_labels_idx.cpu().numpy())
-                all_predicted_severities.extend(predicted_severities.cpu().numpy())
+                    all_action_labels.extend(action_labels_idx.cpu().numpy())
+                    all_predicted_actions.extend(predicted_actions.cpu().numpy())
+                    all_severity_labels.extend(severity_labels_idx.cpu().numpy())
+                    all_predicted_severities.extend(predicted_severities.cpu().numpy())
+
+            except Exception as e:
+                print(f"An error occurred during validation dataloader iteration: {e}")
+                print("Please check the dataset and dataloader configuration.")
+                exit()
 
         if len(all_action_labels) > 0:
             # Calculate and print metrics for action classification
