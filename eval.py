@@ -58,6 +58,20 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
         3: "Offence + Red Card"
     }
 
+    offence_labels_map = {
+        0: "No offence",
+        1: "Offence",
+        2: "Offence",
+        3: "Offence"
+    }
+
+    severity_numerical_map = {
+        0: "",
+        1: "1.0",
+        2: "3.0",
+        3: "5.0"
+    }
+
     all_action_labels = []
     all_predicted_actions = []
     all_severity_labels = []
@@ -87,14 +101,16 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
 
             # Map to human-readable labels for JSON output
             predicted_action_class = action_labels_map.get(predicted_action_idx.item(), "Unknown Action")
-            predicted_severity = predicted_severity_idx.item() # Severity as numerical value 1.0, 2.0, etc.
+            
+            predicted_offence = offence_labels_map.get(predicted_severity_idx.item(), "Unknown Offence")
+            predicted_severity_value = severity_numerical_map.get(predicted_severity_idx.item(), "")
 
             # Populate results dictionary
             results["Actions"][str(i)] = {
                 "Action class": predicted_action_class,
-                "Severity": float(predicted_severity) # Ensure it's a float
+                "Offence": predicted_offence,
+                "Severity": predicted_severity_value
             }
-            # Note: "Offence" is not included as per user's request "no offence, only action class and severity"
 
     # Save results to JSON file
     output_filename = f"evaluation_results_{test_split}.json"
