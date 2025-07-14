@@ -12,6 +12,7 @@ import torch.nn.functional as F
 import random
 import numpy as np
 import torch.cuda.amp as amp
+from collections import Counter
 
 # Define Focal Loss
 class FocalLoss(nn.Module):
@@ -110,10 +111,69 @@ if __name__ == "__main__":
     # Initialize GradScaler for Mixed Precision Training
     scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
 
+    # Helper function to calculate class weights for WeightedRandomSampler
+    def calculate_class_weights(labels_list, num_classes):
+        # labels_list is a list of one-hot encoded tensors like [tensor([0, 1, 0]), tensor([1, 0, 0])] for a batch
+        # First, concatenate all labels and convert one-hot to class indices
+        all_labels_indices = torch.cat(labels_list, dim=0).argmax(dim=1).cpu().numpy()
+        
+        # Count occurrences of each class
+        class_counts = Counter(all_labels_indices)
+        
+        # Calculate inverse frequency weights
+        total_samples = len(all_labels_indices)
+        weights = torch.zeros(num_classes)
+        for i in range(num_classes):
+            # Avoid division by zero for classes that might not be present
+            if class_counts[i] > 0:
+                weights[i] = total_samples / class_counts[i]
+            else:
+                weights[i] = 0 # Or a very high number, depending on desired behavior for missing classes
+        
+        # Normalize weights to sum to 1 or max to 1 for stability if needed, but often inverse freq is used directly
+        # For WeightedRandomSampler, raw inverse frequency is suitable
+        return weights
+
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
     train_dataset = MVFoulsDataset(DATA_FOLDER, TRAIN_SPLIT, START_FRAME, END_FRAME)
-    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
+
+    # Calculate class weights for action and severity labels in the training set
+    num_action_classes = 8 # As defined in data_loader.py
+    num_severity_classes = 4 # As defined in data_loader.py
+
+    action_class_weights = calculate_class_weights(train_dataset.labels_action_list, num_action_classes)
+    severity_class_weights = calculate_class_weights(train_dataset.labels_severity_list, num_severity_classes)
+
+    # Combine weights for each sample based on its action and severity labels
+    # This is a bit tricky since each sample has *two* labels. A simple sum/average is one approach.
+    # For simplicity, let's use the average of the individual action and severity weights for each sample.
+    # We need to map each sample's original one-hot label back to its class index and then to its weight.
+    sample_weights = []
+    for i in range(len(train_dataset)):
+        # Assuming labels_action_list and labels_severity_list store one-hot encoded tensors
+        action_label_idx = train_dataset.labels_action_list[i].argmax().item()
+        severity_label_idx = train_dataset.labels_severity_list[i].argmax().item()
+        
+        # Handle cases where weights might be zero for extremely rare classes, prevent NaN or Inf
+        action_w = action_class_weights[action_label_idx] if action_class_weights[action_label_idx] > 0 else 1.0 # Default to 1.0 if class not present
+        severity_w = severity_class_weights[severity_label_idx] if severity_class_weights[severity_label_idx] > 0 else 1.0 # Default to 1.0 if class not present
+        
+        # Average the weights, or multiply, or take max - depends on desired emphasis
+        # Averaging is a good starting point.
+        sample_weights.append((action_w + severity_w) / 2.0)
+    
+    sample_weights = torch.DoubleTensor(sample_weights)
+    
+    # Create WeightedRandomSampler
+    # Replacement=True means samples can be drawn more than once (good for highly imbalanced data)
+    weighted_sampler = torch.utils.data.WeightedRandomSampler(
+        weights=sample_weights, 
+        num_samples=len(sample_weights), 
+        replacement=True
+    )
+
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=weighted_sampler, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
     
     # Initialize validation dataset and dataloader
     val_dataset = MVFoulsDataset(DATA_FOLDER, VAL_SPLIT, START_FRAME, END_FRAME)
