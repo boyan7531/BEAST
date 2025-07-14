@@ -163,7 +163,7 @@ if __name__ == "__main__":
         running_loss = 0.0
         
         # Add tqdm for progress bar
-        for i, (videos, action_labels, severity_labels) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1} Training")):
+        for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1} Training")):
             # For testing, break after a specified number of batches if TEST_BATCHES > 0
             if TEST_BATCHES > 0 and i >= TEST_BATCHES:
                 print(f"Reached {TEST_BATCHES} batches for testing, breaking training loop.")
@@ -223,7 +223,7 @@ if __name__ == "__main__":
         else:
             with torch.no_grad(): # Disable gradient calculation for validation
                 # Add tqdm for progress bar
-                for i, (videos, action_labels, severity_labels) in enumerate(tqdm(val_dataloader, desc="Validation")):
+                for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm(val_dataloader, desc="Validation")):
                     # For testing, break after a specified number of batches if TEST_BATCHES > 0
                     if TEST_BATCHES > 0 and i >= TEST_BATCHES:
                         print(f"Reached {TEST_BATCHES} batches for testing, breaking validation loop.")

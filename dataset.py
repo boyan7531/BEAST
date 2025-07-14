@@ -24,7 +24,7 @@ class MVFoulsDataset(Dataset):
             print("they are not the same size")
         for action_name, labels_action, labels_severity in zip(useful_actions, self.labels_action_list, self.labels_severity_list):
             # Append each clip path for this action along with its labels
-            self.data_list.append((self.clip_paths_dict[action_name], labels_action, labels_severity)) # Append action_name instead of clip_path
+            self.data_list.append((self.clip_paths_dict[action_name], labels_action, labels_severity, action_name)) # Append action_name instead of clip_path
 
         self.length = len(self.data_list)
 
@@ -38,7 +38,10 @@ class MVFoulsDataset(Dataset):
         return self.length
     
     def __getitem__(self, idx):
-        all_clips_for_action_paths, labels_action, labels_severity = self.data_list[idx]
+        all_clips_for_action_paths, labels_action, labels_severity, action_name = self.data_list[idx]
+        
+        # Extract numerical action ID from action_name (e.g., "action_0" -> "0")
+        action_id = action_name.split('_')[1]
         
         all_clips_for_action_data = []
         for clip_path in all_clips_for_action_paths:
@@ -58,7 +61,7 @@ class MVFoulsDataset(Dataset):
             all_clips_for_action_data.append(video)
         # the shape for combined_videos is (num_clips_for_this_action, C, num_frames, H, W)
         combined_videos = torch.stack(all_clips_for_action_data) # Stack all clips into a single tensor
-        return combined_videos, labels_action, labels_severity
+        return combined_videos, labels_action, labels_severity, action_id
 
 def custom_collate_fn(batch):
     # 'batch' is a list of tuples: [(video_0, action_label_0, severity_label_0), (video_1, action_label_1, severity_label_1), ...]
@@ -67,8 +70,9 @@ def custom_collate_fn(batch):
     videos = [item[0] for item in batch] # This will be the list of tensors for the model's forward pass
     action_labels = torch.cat([item[1] for item in batch], dim=0) # Concatenate action labels
     severity_labels = torch.cat([item[2] for item in batch], dim=0) # Concatenate severity labels
+    action_ids = [item[3] for item in batch] # Collect action IDs
 
-    return videos, action_labels, severity_labels
+    return videos, action_labels, severity_labels, action_ids
 
 
 if __name__ == "__main__":
@@ -89,7 +93,7 @@ if __name__ == "__main__":
     
     # Get a batch
     if len(dataset) > 0:
-        batch_videos, batch_action_labels, batch_severity_labels = next(iter(dataloader))
+        batch_videos, batch_action_labels, batch_severity_labels, batch_action_ids = next(iter(dataloader))
         
         print(f"\nBatch of videos is a list of {len(batch_videos)} tensors.")
         for i, video_tensor in enumerate(batch_videos):
@@ -97,6 +101,7 @@ if __name__ == "__main__":
         
         print(f"Batch action labels shape: {batch_action_labels.shape}")
         print(f"Batch severity labels shape: {batch_severity_labels.shape}")
+        print(f"Batch action IDs shape: {batch_action_ids.shape}")
         
         print("\nCustom collate function test passed!")
     else:

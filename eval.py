@@ -78,7 +78,7 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
     all_predicted_severities = []
 
     with torch.no_grad():
-        for i, (videos, action_labels, severity_labels) in enumerate(tqdm(test_dataloader, desc="Evaluating")):
+        for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm(test_dataloader, desc="Evaluating")):
             # Move data to device
             videos = [video.to(DEVICE) for video in videos]
             
@@ -106,11 +106,12 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
             predicted_severity_value = severity_numerical_map.get(predicted_severity_idx.item(), "")
 
             # Populate results dictionary
-            results["Actions"][str(i)] = {
-                "Action class": predicted_action_class,
-                "Offence": predicted_offence,
-                "Severity": predicted_severity_value
-            }
+            for idx, action_id in enumerate(action_ids):
+                results["Actions"][str(action_id)] = {
+                    "Action class": predicted_action_class,
+                    "Offence": predicted_offence,
+                    "Severity": predicted_severity_value
+                }
 
     # Save results to JSON file
     output_filename = f"evaluation_results_{test_split}.json"
