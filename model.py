@@ -2,6 +2,37 @@ import torch
 from torchvision.models.video import mvit_v2_s, MViT_V2_S_Weights
 import torch.nn as nn
 
+class MultiClipAttention(nn.Module):
+    def __init__(self, embed_dim):
+        super().__init__()
+        self.query_transform = nn.Linear(embed_dim, embed_dim)
+        self.key_transform = nn.Linear(embed_dim, embed_dim)
+        self.value_transform = nn.Linear(embed_dim, embed_dim)
+        self.softmax = nn.Softmax(dim=-1)
+
+    def forward(self, x):  # x will be (num_clips, embed_dim)
+        # Apply linear transformations to get Q, K, V
+        queries = self.query_transform(x)
+        keys = self.key_transform(x)
+        values = self.value_transform(x)
+
+        # Calculate attention scores
+        # (num_clips, embed_dim) @ (embed_dim, num_clips) -> (num_clips, num_clips)
+        attention_scores = torch.matmul(queries, keys.transpose(-2, -1))
+        attention_scores = attention_scores / (keys.size(-1) ** 0.5) # Scale by sqrt(d_k)
+
+        # Apply softmax to get attention weights
+        attention_weights = self.softmax(attention_scores)
+
+        # Apply attention weights to values
+        # (num_clips, num_clips) @ (num_clips, embed_dim) -> (num_clips, embed_dim)
+        weighted_values = torch.matmul(attention_weights, values)
+
+        # For multi-clip attention, we want to aggregate these. A simple sum or mean is common.
+        # Here, we'll sum them up to get a single feature vector for the action.
+        aggregated_features = torch.sum(weighted_values, dim=0) # (embed_dim)
+        return aggregated_features
+
 class MVFoulsModel(nn.Module):
     def __init__(self):
         super().__init__()
@@ -20,21 +51,46 @@ class MVFoulsModel(nn.Module):
         self.shared_head = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.GELU(),
-            nn.Dropout(0.3) # Add dropout for regularization
+            nn.Dropout(0.3)
         )
+
+        # Initialize the MultiClipAttention module
+        self.attention_module = MultiClipAttention(in_features)
 
         # Define new classification heads for action and severity, connected to the shared head
         self.action_head = nn.Linear(hidden_dim, 8)  # 8 classes for action
         self.severity_head = nn.Linear(hidden_dim, 4) # 4 classes for severity
 
     def forward(self, x):
-        # Get the features from the backbone model
-        features = self.model(x)
+        # x is expected to be (batch_size, num_clips, C, num_frames, H, W)
+        batch_size, num_clips, C, num_frames, H, W = x.size()
+
+        # Reshape for backbone processing: (batch_size * num_clips, C, num_frames, H, W)
+        x = x.view(batch_size * num_clips, C, num_frames, H, W)
+
+        # Get the features from the backbone model for each individual clip
+        clip_features = self.model(x) # (batch_size * num_clips, in_features)
+
+        # Reshape clip_features to apply attention per action
+        # (batch_size, num_clips, in_features)
+        clip_features = clip_features.view(batch_size, num_clips, -1)
+
+        # Apply attention for each action in the batch
+        # We need to iterate through the batch to apply attention per action independently
+        aggregated_features_batch = []
+        for i in range(batch_size):
+            # Pass all clips for a single action through the attention module
+            # attention_module expects (num_clips, embed_dim)
+            aggregated_feature = self.attention_module(clip_features[i]) # (in_features)
+            aggregated_features_batch.append(aggregated_feature)
+        
+        # Stack the aggregated features back into a batch tensor
+        processed_features = torch.stack(aggregated_features_batch) # (batch_size, in_features)
 
         # Pass features through the shared custom head
-        processed_features = self.shared_head(features)
+        processed_features = self.shared_head(processed_features)
 
-        # Pass the processed features through each of your new heads
+        # Pass the processed features through the action and severity heads
         action_logits = self.action_head(processed_features)
         severity_logits = self.severity_head(processed_features)
 
@@ -66,10 +122,12 @@ if __name__ == "__main__":
     # MViT_V2_S typically expects input in the format [batch_size, channels, frames, height, width]
     # For a video model, common input shape might be (batch_size, 3, num_frames, 224, 224)
     batch_size = 2
+    num_clips_per_action = 3 # New: Number of clips per action
     num_frames = 16 # Example number of frames per clip
     height = 224
     width = 224
-    dummy_input = torch.randn(batch_size, 3, num_frames, height, width)
+    # Update dummy input shape to include num_clips_per_action
+    dummy_input = torch.randn(batch_size, num_clips_per_action, 3, num_frames, height, width)
     print(f"Created dummy input with shape: {dummy_input.shape}")
 
     # Pass dummy input through the model
