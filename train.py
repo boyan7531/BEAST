@@ -108,7 +108,7 @@ if __name__ == "__main__":
     print(f"Using device: {DEVICE}")
 
     # Initialize GradScaler for Mixed Precision Training
-    scaler = torch.amp.GradScaler(device='cuda') # Updated for newer PyTorch versions
+    scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
 
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
@@ -178,7 +178,7 @@ if __name__ == "__main__":
             severity_labels = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
             # Forward pass with automatic mixed precision
-            with torch.amp.autocast(device='cuda'): # Updated for newer PyTorch versions
+            with torch.amp.autocast():
                 action_logits, severity_logits = model(videos)
 
                 # Calculate loss
@@ -233,7 +233,7 @@ if __name__ == "__main__":
                     action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
                     severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 
-                    with torch.amp.autocast(device='cuda'): # Updated for newer PyTorch versions
+                    with torch.amp.autocast():
                         action_logits, severity_logits = model(videos)
 
                         loss_action = criterion_action(action_logits, action_labels_idx)
