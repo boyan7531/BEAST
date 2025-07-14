@@ -1,6 +1,9 @@
 import torch
 from torchvision.models.video import mvit_v2_s, MViT_V2_S_Weights
 import torch.nn as nn
+from dataset import MVFoulsDataset, custom_collate_fn
+from torch.utils.data import DataLoader
+import os
 
 class MultiClipAttention(nn.Module):
     def __init__(self, embed_dim):
@@ -120,38 +123,54 @@ if __name__ == "__main__":
     severity_head_params = sum(p.numel() for p in model.severity_head.parameters() if p.requires_grad)
     print(f"Severity head parameters: {severity_head_params}")
 
-    # Create a dummy input tensor
-    # MViT_V2_S typically expects input in the format [batch_size, channels, frames, height, width]
-    # For a video model, common input shape might be (batch_size, 3, num_frames, 224, 224)
-    batch_size = 2
-    num_clips_per_action = 3 # New: Number of clips per action
-    num_frames = 16 # Example number of frames per clip
-    height = 224
-    width = 224
-    # Update dummy input shape to include num_clips_per_action
-    # dummy_input = torch.randn(batch_size, num_clips_per_action, 3, num_frames, height, width)
+    # --- Test with real data from dataset ---
+    print("\nTesting with real data from MVFoulsDataset...")
+    test_folder = "mvfouls"  
+    test_split = "train"
+    start_frame = 67
+    end_frame = 82
 
-    # Create a list of dummy inputs with varying number of clips per action
-    dummy_input = []
-    for i in range(batch_size):
-        # Varying num_clips_per_action for each item in the batch
-        current_num_clips = 2 if i % 2 == 0 else 4 # Example: 2 clips for even batch items, 4 for odd
-        dummy_input.append(torch.randn(current_num_clips, 3, num_frames, height, width))
-    
-    print(f"Created dummy input as a list of tensors. Example shapes: {[item.shape for item in dummy_input]}")
-
-    # Pass dummy input through the model
-    try:
-        action_logits, severity_logits = model(dummy_input)
-        print("Model forward pass successful.")
-    except Exception as e:
-        print(f"Error during forward pass: {e}")
+    if not os.path.exists(test_folder):
+        print(f"Error: Dataset folder '{test_folder}' not found. Please ensure your dataset is downloaded and extracted.")
         exit()
 
-    # Assert output shapes
-    # The batch_size here refers to the number of actions in the batch, not total clips
-    expected_action_shape = torch.Size([batch_size, 8])
-    expected_severity_shape = torch.Size([batch_size, 4])
+    try:
+        dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame)
+        dataloader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=custom_collate_fn)
+        print(f"Dataset initialized with {len(dataset)} samples. DataLoader created.")
+    except Exception as e:
+        print(f"Error initializing dataset or dataloader: {e}")
+        exit()
+
+    if len(dataset) == 0:
+        print("No samples found in the dataset. Exiting test.")
+        exit()
+
+    # Get a real batch
+    try:
+        real_batch_videos, real_batch_action_labels, real_batch_severity_labels = next(iter(dataloader))
+        print(f"Got a real batch from DataLoader. Batch size: {len(real_batch_videos)}")
+        for i, video_tensor in enumerate(real_batch_videos):
+            print(f"  Video {i} shape: {video_tensor.shape}")
+        print(f"  Action labels shape: {real_batch_action_labels.shape}")
+        print(f"  Severity labels shape: {real_batch_severity_labels.shape}")
+
+    except Exception as e:
+        print(f"Error getting batch from DataLoader: {e}")
+        exit()
+
+    # Pass real batch through the model
+    try:
+        action_logits, severity_logits = model(real_batch_videos)
+        print("Model forward pass with real data successful.")
+    except Exception as e:
+        print(f"Error during forward pass with real data: {e}")
+        exit()
+
+    # Assert output shapes using the actual batch size
+    actual_batch_size = len(real_batch_videos)
+    expected_action_shape = torch.Size([actual_batch_size, 8])
+    expected_severity_shape = torch.Size([actual_batch_size, 4])
 
     if action_logits.shape == expected_action_shape:
         print(f"Action logits shape check passed: {action_logits.shape}")
@@ -164,6 +183,6 @@ if __name__ == "__main__":
         print(f"Severity logits shape check FAILED. Expected {expected_severity_shape}, got {severity_logits.shape}")
 
     if action_logits.shape == expected_action_shape and severity_logits.shape == expected_severity_shape:
-        print("All tests passed!")
+        print("All tests passed with real data!")
     else:
-        print("Some tests failed.")
+        print("Some tests failed with real data.")

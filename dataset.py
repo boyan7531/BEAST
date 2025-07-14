@@ -3,6 +3,7 @@ import torch
 from decord import VideoReader, cpu
 from data_loader import load_clips, label_to_numerical
 from natsort import natsorted
+from torchvision.models.video import MViT_V2_S_Weights
 
 class MVFoulsDataset(Dataset):
     def __init__(self, folder_path, split, start_frame, end_frame, transform=None, transform_model=None):
@@ -27,6 +28,11 @@ class MVFoulsDataset(Dataset):
 
         self.length = len(self.data_list)
 
+        # Initialize the model transform from MViT_V2_S_Weights
+        # We only need the transforms, not the model itself for preprocessing
+        weights = MViT_V2_S_Weights.KINETICS400_V1
+        self.transform_model = weights.transforms()
+
         
     def __len__(self):
         return self.length
@@ -39,7 +45,16 @@ class MVFoulsDataset(Dataset):
             vr = VideoReader(clip_path, ctx=cpu(0))
             frame_indices = range(self.start_frame, self.end_frame + 1)  
             video = vr.get_batch(frame_indices).asnumpy()
-            video = torch.from_numpy(video).permute(0, 3, 1, 2)
+            
+            # Convert numpy array to torch tensor with (T, H, W, C) format first for torchvision transforms
+            video = torch.from_numpy(video)
+            
+            # Apply the model's expected transforms
+            # The transform expects (T, C, H, W) or (B, T, C, H, W) and outputs (C, T, H, W) for single video
+            # We provide (T, H, W, C) and then permute to (T, C, H, W) before applying transform
+            video = video.permute(0, 3, 1, 2) # Change from (T, H, W, C) to (T, C, H, W)
+            video = self.transform_model(video)
+            
             all_clips_for_action_data.append(video)
         # the shape for combined_videos is (num_clips_for_this_action, C, num_frames, H, W)
         combined_videos = torch.stack(all_clips_for_action_data) # Stack all clips into a single tensor
