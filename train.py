@@ -211,8 +211,8 @@ if __name__ == "__main__":
         {'params': model.severity_head.parameters()}
     ], lr=LEARNING_RATE) # Default LR for custom heads
 
-    # Initialize learning rate scheduler
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5, verbose=True)
+    # Initialize learning rate scheduler (CosineAnnealingLR)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS) # T_max is the number of training epochs
 
     print("Training setup complete. Starting training loop...")
 
@@ -337,8 +337,8 @@ if __name__ == "__main__":
                 avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
                 print(f"Validation Loss: {avg_val_loss:.4f}")
 
-                # Step the learning rate scheduler
-                scheduler.step(avg_val_loss)
+                # Step the learning rate scheduler (for CosineAnnealingLR, no arguments needed here)
+                scheduler.step()
             else:
                 print("No samples processed in validation.")
 
