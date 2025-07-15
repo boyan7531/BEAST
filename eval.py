@@ -7,7 +7,7 @@ import os
 import json
 import argparse
 from tqdm import tqdm
-from sklearn.metrics import precision_recall_fscore_support, accuracy_score # Import metrics
+from sklearn.metrics import precision_recall_fscore_support, accuracy_score, confusion_matrix # Import metrics
 from transform import get_val_transforms # Import val transform
 from torchvision.models.video import MViT_V2_S_Weights # Needed to get model input size
 
@@ -132,6 +132,10 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
         print(f"\nAction Classification Metrics:")
         print(f"  Accuracy: {action_accuracy:.4f}")
         print(f"  Macro Recall: {action_recall:.4f}")
+        
+        # Action Confusion Matrix
+        action_cm = confusion_matrix(all_action_labels, all_predicted_actions)
+        print(f"  Confusion Matrix (Actions):\n{action_cm}")
 
         # Severity Classification Metrics
         severity_accuracy = accuracy_score(all_severity_labels, all_predicted_severities)
@@ -140,6 +144,10 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
         print(f"\nSeverity Classification Metrics:")
         print(f"  Accuracy: {severity_accuracy:.4f}")
         print(f"  Macro Recall: {severity_recall:.4f}")
+        
+        # Severity Confusion Matrix
+        severity_cm = confusion_matrix(all_severity_labels, all_predicted_severities)
+        print(f"  Confusion Matrix (Severity):\n{severity_cm}")
     else:
         print("No samples processed for metrics calculation.")
 
