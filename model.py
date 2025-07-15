@@ -6,34 +6,60 @@ from torch.utils.data import DataLoader
 import os
 
 class MultiClipAttention(nn.Module):
-    def __init__(self, embed_dim):
+    def __init__(self, embed_dim, num_heads=4):
         super().__init__()
+        self.num_heads = num_heads
+        self.head_dim = embed_dim // num_heads
+        assert embed_dim % num_heads == 0, "embed_dim must be divisible by num_heads"
+
         self.query_transform = nn.Linear(embed_dim, embed_dim)
         self.key_transform = nn.Linear(embed_dim, embed_dim)
         self.value_transform = nn.Linear(embed_dim, embed_dim)
+
         self.softmax = nn.Softmax(dim=-1)
 
-    def forward(self, x):  # x will be (num_clips, embed_dim)
-        # Apply linear transformations to get Q, K, V
-        queries = self.query_transform(x)
-        keys = self.key_transform(x)
-        values = self.value_transform(x)
+        # Final linear layer for refined aggregation after multi-head attention
+        self.out_transform = nn.Linear(embed_dim, embed_dim)
+
+    def forward(self, x):  # x will be (num_clips, embed_dim) initially
+        is_single_input = False
+        if x.dim() == 2:
+            # If input is (num_clips, embed_dim), unsqueeze to (1, num_clips, embed_dim)
+            x = x.unsqueeze(0)  # (batch_size=1, seq_len=num_clips, embed_dim)
+            is_single_input = True
+        
+        batch_size, seq_len, embed_dim = x.size()
+
+        # Apply linear transformations and split into heads
+        queries = self.query_transform(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        keys = self.key_transform(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
+        values = self.value_transform(x).view(batch_size, seq_len, self.num_heads, self.head_dim).transpose(1, 2)
 
         # Calculate attention scores
-        # (num_clips, embed_dim) @ (embed_dim, num_clips) -> (num_clips, num_clips)
+        # (batch_size, num_heads, seq_len, head_dim) @ (batch_size, num_heads, head_dim, seq_len) -> (batch_size, num_heads, seq_len, seq_len)
         attention_scores = torch.matmul(queries, keys.transpose(-2, -1))
-        attention_scores = attention_scores / (keys.size(-1) ** 0.5) # Scale by sqrt(d_k)
+        attention_scores = attention_scores / (self.head_dim ** 0.5) # Scale by sqrt(d_k)
 
         # Apply softmax to get attention weights
         attention_weights = self.softmax(attention_scores)
 
         # Apply attention weights to values
-        # (num_clips, num_clips) @ (num_clips, embed_dim) -> (num_clips, embed_dim)
+        # (batch_size, num_heads, seq_len, seq_len) @ (batch_size, num_heads, seq_len, head_dim) -> (batch_size, num_heads, seq_len, head_dim)
         weighted_values = torch.matmul(attention_weights, values)
 
-        # For multi-clip attention, we want to aggregate these. A simple sum or mean is common.
-        # Here, we'll sum them up to get a single feature vector for the action.
-        aggregated_features = torch.sum(weighted_values, dim=0) # (embed_dim)
+        # Concatenate heads and apply final linear layer
+        # (batch_size, seq_len, num_heads, head_dim) -> (batch_size, seq_len, embed_dim)
+        concat_heads = weighted_values.transpose(1, 2).contiguous().view(batch_size, seq_len, embed_dim)
+        
+        # Aggregate features: sum along the sequence length (clips) dimension
+        aggregated_features = torch.sum(concat_heads, dim=1) # (batch_size, embed_dim)
+        
+        # Apply final output transformation
+        aggregated_features = self.out_transform(aggregated_features)
+
+        if is_single_input:
+            return aggregated_features.squeeze(0) # Remove batch dimension if it was added
+        
         return aggregated_features
 
 class MVFoulsModel(nn.Module):
@@ -59,8 +85,8 @@ class MVFoulsModel(nn.Module):
             nn.Dropout(0.3)
         )
 
-        # Initialize the MultiClipAttention module
-        self.attention_module = MultiClipAttention(in_features)
+        # Initialize the MultiClipAttention module with num_heads
+        self.attention_module = MultiClipAttention(in_features, num_heads=4) # Using 4 heads as an example
 
         # Define new classification heads for action and severity, connected to the shared head
         self.action_head = nn.Sequential(
@@ -133,6 +159,26 @@ if __name__ == "__main__":
     severity_head_params = sum(p.numel() for p in model.severity_head.parameters() if p.requires_grad)
     print(f"Severity head parameters: {severity_head_params}")
 
+    # --- Test MultiClipAttention independently ---
+    print("\nTesting MultiClipAttention independently...")
+    embed_dim = 768 # MViT_V2_S_Weights.KINETICS400_V1 features dimension
+    num_heads = 4
+    num_clips_test = 5 # Example: 5 clips for one action
+    dummy_clip_features = torch.randn(num_clips_test, embed_dim) # (num_clips, embed_dim)
+
+    try:
+        attention_module_test = MultiClipAttention(embed_dim, num_heads=num_heads)
+        aggregated_output = attention_module_test(dummy_clip_features)
+        print(f"  MultiClipAttention input shape: {dummy_clip_features.shape}")
+        print(f"  MultiClipAttention output shape: {aggregated_output.shape}")
+        expected_output_shape = torch.Size([embed_dim])
+        if aggregated_output.shape == expected_output_shape:
+            print("  MultiClipAttention output shape test PASSED.")
+        else:
+            print(f"  MultiClipAttention output shape test FAILED. Expected {expected_output_shape}, got {aggregated_output.shape}")
+    except Exception as e:
+        print(f"  Error during MultiClipAttention independent test: {e}")
+
     # --- Test with real data from dataset ---
     print("\nTesting with real data from MVFoulsDataset...")
     test_folder = "mvfouls"  
@@ -158,7 +204,7 @@ if __name__ == "__main__":
 
     # Get a real batch
     try:
-        real_batch_videos, real_batch_action_labels, real_batch_severity_labels = next(iter(dataloader))
+        real_batch_videos, real_batch_action_labels, real_batch_severity_labels, _ = next(iter(dataloader)) # Added _ to unpack action_ids
         print(f"Got a real batch from DataLoader. Batch size: {len(real_batch_videos)}")
         for i, video_tensor in enumerate(real_batch_videos):
             print(f"  Video {i} shape: {video_tensor.shape}")
