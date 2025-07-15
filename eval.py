@@ -84,7 +84,7 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
     with torch.no_grad():
         for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm(test_dataloader, desc="Evaluating")):
             # Move data to device
-            videos = [video.to(DEVICE) for video in videos]
+            videos = videos.to(DEVICE)
             
             # Convert one-hot encoded labels to class indices
             action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)

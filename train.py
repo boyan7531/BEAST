@@ -242,9 +242,7 @@ if __name__ == "__main__":
                 break
 
             # Move data to the appropriate device
-            # For videos, it's a list of tensors, so move each tensor individually
             videos = videos.to(DEVICE) # Ensure videos is a single tensor moved to device
-            print(f"Shape of videos tensor before model: {videos.shape}")
             
             # Convert one-hot encoded labels to class indices
             action_labels = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
