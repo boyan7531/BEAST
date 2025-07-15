@@ -104,10 +104,10 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
             all_predicted_severities.extend(predicted_severity_idx.cpu().numpy())
 
             # Map to human-readable labels for JSON output
-            predicted_action_class = action_labels_map.get(predicted_action_idx.item(), "Unknown Action")
+            predicted_action_class = action_labels_map.get(predicted_action_idx[0].item(), "Unknown Action")
             
-            predicted_offence = offence_labels_map.get(predicted_severity_idx.item(), "Unknown Offence")
-            predicted_severity_value = severity_numerical_map.get(predicted_severity_idx.item(), "")
+            predicted_offence = offence_labels_map.get(predicted_severity_idx[0].item(), "Unknown Offence")
+            predicted_severity_value = severity_numerical_map.get(predicted_severity_idx[0].item(), "")
 
             # Populate results dictionary
             for idx, action_id in enumerate(action_ids):
