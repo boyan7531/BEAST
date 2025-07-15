@@ -137,6 +137,12 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
         action_cm = confusion_matrix(all_action_labels, all_predicted_actions)
         print(f"  Confusion Matrix (Actions):\n{action_cm}")
 
+        # Per-class Action Metrics
+        action_precision_per_class, action_recall_per_class, action_f1_per_class, _ = precision_recall_fscore_support(all_action_labels, all_predicted_actions, average=None, zero_division=0)
+        print("\nPer-class Action Metrics:")
+        for i, class_name in action_labels_map.items():
+            print(f"  {class_name}: Precision={action_precision_per_class[i]:.4f}, Recall={action_recall_per_class[i]:.4f}, F1-Score={action_f1_per_class[i]:.4f}")
+
         # Severity Classification Metrics
         severity_accuracy = accuracy_score(all_severity_labels, all_predicted_severities)
         _, severity_recall, _, _ = precision_recall_fscore_support(all_severity_labels, all_predicted_severities, average='macro', zero_division=0)
@@ -148,6 +154,12 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
         # Severity Confusion Matrix
         severity_cm = confusion_matrix(all_severity_labels, all_predicted_severities)
         print(f"  Confusion Matrix (Severity):\n{severity_cm}")
+
+        # Per-class Severity Metrics
+        severity_precision_per_class, severity_recall_per_class, severity_f1_per_class, _ = precision_recall_fscore_support(all_severity_labels, all_predicted_severities, average=None, zero_division=0)
+        print("\nPer-class Severity Metrics:")
+        for i, class_name in severity_labels_map.items():
+            print(f"  {class_name}: Precision={severity_precision_per_class[i]:.4f}, Recall={severity_recall_per_class[i]:.4f}, F1-Score={severity_f1_per_class[i]:.4f}")
     else:
         print("No samples processed for metrics calculation.")
 
