@@ -60,10 +60,24 @@ def custom_collate_fn(batch):
     # 'batch' is a list of tuples: [(video_0, action_label_0, severity_label_0), (video_1, action_label_1, severity_label_1), ...]
     # where video_i has shape (num_clips_for_action_i, C, num_frames, H, W)
 
-    videos = [item[0] for item in batch] # This will be the list of tensors for the model's forward pass
-    action_labels = torch.cat([item[1] for item in batch], dim=0) # Concatenate action labels
-    severity_labels = torch.cat([item[2] for item in batch], dim=0) # Concatenate severity labels
-    action_ids = [item[3] for item in batch] # Collect action IDs
+    # Flatten the list of video tensors from (num_clips_for_action_i, C, num_frames, H, W) to (total_clips_in_batch, C, num_frames, H, W)
+    videos = torch.cat([item[0] for item in batch], dim=0) # Concatenate all clips from all samples in the batch
+
+    # Expand labels to match the number of clips for each action
+    # Each item[0] is combined_videos with shape (num_clips_for_action_i, ...)
+    # We need to repeat action_label_i and severity_label_i 'num_clips_for_action_i' times
+    action_labels = []
+    severity_labels = []
+    action_ids = [] # This is now tricky, as action_id is per action, not per clip
+
+    for item in batch:
+        num_clips = item[0].shape[0] # Number of clips for the current action
+        action_labels.append(item[1].repeat(num_clips, 1)) # Repeat action label for each clip
+        severity_labels.append(item[2].repeat(num_clips, 1)) # Repeat severity label for each clip
+        action_ids.extend([item[3]] * num_clips) # Repeat action ID for each clip
+
+    action_labels = torch.cat(action_labels, dim=0) # Concatenate all action labels
+    severity_labels = torch.cat(severity_labels, dim=0) # Concatenate all severity labels
 
     return videos, action_labels, severity_labels, action_ids
 

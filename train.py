@@ -105,8 +105,8 @@ if __name__ == "__main__":
 
     # Determine the model input size dynamically from the MViT model weights
     # MViT_V2_S_Weights.KINETICS400_V1.transforms()._size is the expected input size
-    weights = MViT_V2_S_Weights.KINETICS400_V1
-    MODEL_INPUT_SIZE = weights.transforms()._size # This gives the expected (height, width)
+    # weights = MViT_V2_S_Weights.KINETICS400_V1 # Removed as _size attribute is not directly available
+    MODEL_INPUT_SIZE = (224, 224) # MViT models typically use 224x224 input resolution
 
     # For Windows, num_workers must be 0 for DataLoader to avoid multiprocessing issues
     if os.name == 'nt':
@@ -234,7 +234,8 @@ if __name__ == "__main__":
         running_loss = 0.0
         
         # Add tqdm for progress bar
-        for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm(train_dataloader, desc=f"Epoch {epoch+1} Training")):
+        tqdm_dataloader = tqdm(train_dataloader, desc=f"Epoch {epoch+1} Training")
+        for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm_dataloader):
             # For testing, break after a specified number of batches if TEST_BATCHES > 0
             if TEST_BATCHES > 0 and i >= TEST_BATCHES:
                 print(f"Reached {TEST_BATCHES} batches for testing, breaking training loop.")
@@ -242,7 +243,7 @@ if __name__ == "__main__":
 
             # Move data to the appropriate device
             # For videos, it's a list of tensors, so move each tensor individually
-            videos = [video.to(DEVICE) for video in videos]
+            videos = videos.to(DEVICE) # Ensure videos is a single tensor moved to device
             
             # Convert one-hot encoded labels to class indices
             action_labels = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
@@ -264,6 +265,7 @@ if __name__ == "__main__":
             scaler.scale(total_loss).backward()
 
             running_loss += total_loss.item()
+            tqdm_dataloader.set_postfix(loss=total_loss.item())
 
             # Perform optimizer step and zero gradients only after ACCUMULATION_STEPS batches
             if (i + 1) % ACCUMULATION_STEPS == 0 or (TEST_BATCHES > 0 and (i + 1) == TEST_BATCHES) or (i + 1) == len(train_dataloader):
@@ -300,7 +302,7 @@ if __name__ == "__main__":
                         print(f"Reached {TEST_BATCHES} batches for testing, breaking validation loop.")
                         break
 
-                    videos = [video.to(DEVICE) for video in videos]
+                    videos = videos.to(DEVICE)
                     action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
                     severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
 

@@ -9,15 +9,20 @@ def get_train_transforms(model_input_size):
     std = weights.transforms().std
 
     return transforms.Compose([
-        # These transforms operate on (T, H, W, C) tensor (or PIL image if input)
+        # First, permute to (T, C, H, W) for torchvision transforms
+        lambda x: x.permute(0, 3, 1, 2), # From (T, H, W, C) to (T, C, H, W)
+        
+        # These transforms now operate on (T, C, H, W) tensor (or PIL image if input)
         transforms.RandomResizedCrop(model_input_size, scale=(0.8, 1.0)),
         transforms.RandomHorizontalFlip(p=0.5),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
         
-        # Convert to float and permute to (C, T, H, W) as expected by models like MViT
+        # Convert to float and normalize
         transforms.ConvertImageDtype(torch.float32), # Converts to float [0, 1]
         transforms.Normalize(mean=mean, std=std),
-        transforms.Permute([3, 0, 1, 2]), # Change from (T, H, W, C) to (C, T, H, W)
+        
+        # Final permute to (C, T, H, W) as expected by models like MViT
+        lambda x: x.permute(1, 0, 2, 3), # From (T, C, H, W) to (C, T, H, W)
     ])
 
 def get_val_transforms(model_input_size):
@@ -27,11 +32,16 @@ def get_val_transforms(model_input_size):
     std = weights.transforms().std
 
     return transforms.Compose([
-        # These transforms operate on (T, H, W, C) tensor (or PIL image if input)
+        # First, permute to (T, C, H, W) for torchvision transforms
+        lambda x: x.permute(0, 3, 1, 2), # From (T, H, W, C) to (T, C, H, W)
+        
+        # These transforms now operate on (T, C, H, W) tensor (or PIL image if input)
         transforms.Resize(model_input_size), # Resize to model input size
         
-        # Convert to float and permute to (C, T, H, W) as expected by models like MViT
+        # Convert to float and normalize
         transforms.ConvertImageDtype(torch.float32), # Converts to float [0, 1]
         transforms.Normalize(mean=mean, std=std),
-        transforms.Permute([3, 0, 1, 2]), # Change from (T, H, W, C) to (C, T, H, W)
+        
+        # Final permute to (C, T, H, W) as expected by models like MViT
+        lambda x: x.permute(1, 0, 2, 3), # From (T, C, H, W) to (C, T, H, W)
     ])

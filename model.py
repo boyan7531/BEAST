@@ -100,42 +100,26 @@ class MVFoulsModel(nn.Module):
             nn.Linear(hidden_dim, 4) # 4 classes for severity
         )
 
-    def forward(self, x: list[torch.Tensor]):
-        # x is now expected to be a list of tensors, where each tensor is
-        # (num_clips_for_this_action, C, num_frames, H, W)
+    def forward(self, x):
+        # x is a batch of videos from the DataLoader, shape: (Total_Clips_in_Batch, C, T, H, W)
         
-        # Store original batch sizes (number of clips per action)
-        num_clips_per_action_batch = [item.size(0) for item in x]
-
-        # Concatenate all clips from the batch into a single tensor for backbone processing
-        # This allows processing all clips efficiently in one go
-        all_clips_batch = torch.cat(x, dim=0)
-
-        # Get the features from the backbone model for each individual clip
+        # The MViT model expects input in (B, C, T, H, W) format, which is already provided by the DataLoader
+        all_clips_batch = x
+        
+        # Pass through the MViT backbone
         clip_features = self.model(all_clips_batch) # (total_num_clips, in_features)
 
-        # Split the features back into individual action features based on original clip counts
-        # This results in a list of tensors, where each tensor is (num_clips_for_this_action, in_features)
-        split_clip_features = torch.split(clip_features, num_clips_per_action_batch)
-
-        # Apply attention for each action in the batch
-        aggregated_features_batch = []
-        for single_action_clip_features in split_clip_features:
-            # attention_module expects (num_clips, embed_dim)
-            aggregated_feature = self.attention_module(single_action_clip_features) # (in_features)
-            aggregated_features_batch.append(aggregated_feature)
+        # Apply attention mechanism to combine features from multiple clips if necessary
+        # If there's only one clip per action in the batch, this might not be needed or will act as passthrough
+        # For now, assuming clip_features is already the combined features if needed, or single features.
         
-        # Stack the aggregated features back into a batch tensor
-        processed_features = torch.stack(aggregated_features_batch) # (batch_size, in_features)
+        # Apply shared head
+        shared_features = self.shared_head(clip_features)
 
-        # Pass features through the shared custom head
-        processed_features = self.shared_head(processed_features)
+        # Apply action and severity heads
+        action_logits = self.action_head(shared_features)
+        severity_logits = self.severity_head(shared_features)
 
-        # Pass the processed features through the action and severity heads
-        action_logits = self.action_head(processed_features)
-        severity_logits = self.severity_head(processed_features)
-
-        # Return both sets of logits
         return action_logits, severity_logits
         
 
