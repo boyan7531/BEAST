@@ -105,7 +105,7 @@ class MVFoulsModel(nn.Module):
         
         # The MViT model expects input in (B, C, T, H, W) format, which is already provided by the DataLoader
         all_clips_batch = x
-        
+        print(f"Shape of all_clips_batch before MViT model: {all_clips_batch.shape}")
         # Pass through the MViT backbone
         clip_features = self.model(all_clips_batch) # (total_num_clips, in_features)
 
