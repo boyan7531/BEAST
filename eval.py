@@ -8,10 +8,14 @@ import json
 import argparse
 from tqdm import tqdm
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score # Import metrics
+from transform import get_val_transforms # Import val transform
+from torchvision.models.video import MViT_V2_S_Weights # Needed to get model input size
 
 def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_frame=67, end_frame=82):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
+
+    MODEL_INPUT_SIZE = (224, 224) # MViT models typically use 224x224 input resolution
 
     # Load the model
     model = MVFoulsModel().to(DEVICE)
@@ -24,7 +28,7 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
 
     # Prepare dataset and dataloader
     try:
-        test_dataset = MVFoulsDataset(data_folder, test_split, start_frame, end_frame)
+        test_dataset = MVFoulsDataset(data_folder, test_split, start_frame, end_frame, transform_model=get_val_transforms(MODEL_INPUT_SIZE))
         test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn) # Batch size 1 for individual predictions
         print(f"Test dataset initialized with {len(test_dataset)} samples.")
     except Exception as e:
