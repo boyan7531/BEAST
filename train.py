@@ -14,6 +14,8 @@ import numpy as np
 import torch.cuda.amp as amp
 from collections import Counter
 import torch.optim.lr_scheduler # Import lr_scheduler
+from transform import get_train_transforms, get_val_transforms # Import new transform functions
+from torchvision.models.video import MViT_V2_S_Weights # Needed to get model input size
 
 # Define Focal Loss
 class FocalLoss(nn.Module):
@@ -101,6 +103,11 @@ if __name__ == "__main__":
     START_FRAME = 67
     END_FRAME = 82
 
+    # Determine the model input size dynamically from the MViT model weights
+    # MViT_V2_S_Weights.KINETICS400_V1.transforms()._size is the expected input size
+    weights = MViT_V2_S_Weights.KINETICS400_V1
+    MODEL_INPUT_SIZE = weights.transforms()._size # This gives the expected (height, width)
+
     # For Windows, num_workers must be 0 for DataLoader to avoid multiprocessing issues
     if os.name == 'nt':
         if NUM_WORKERS > 0:
@@ -137,7 +144,7 @@ if __name__ == "__main__":
 
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
-    train_dataset = MVFoulsDataset(DATA_FOLDER, TRAIN_SPLIT, START_FRAME, END_FRAME)
+    train_dataset = MVFoulsDataset(DATA_FOLDER, TRAIN_SPLIT, START_FRAME, END_FRAME, transform_model=get_train_transforms(MODEL_INPUT_SIZE))
 
     # Calculate class weights for action and severity labels in the training set
     num_action_classes = 8 # As defined in data_loader.py
@@ -177,7 +184,7 @@ if __name__ == "__main__":
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=weighted_sampler, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
     
     # Initialize validation dataset and dataloader
-    val_dataset = MVFoulsDataset(DATA_FOLDER, VAL_SPLIT, START_FRAME, END_FRAME)
+    val_dataset = MVFoulsDataset(DATA_FOLDER, VAL_SPLIT, START_FRAME, END_FRAME, transform_model=get_val_transforms(MODEL_INPUT_SIZE))
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
 
     # Check if datasets have samples
