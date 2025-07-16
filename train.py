@@ -19,16 +19,30 @@ from torchvision.models.video import MViT_V2_S_Weights # Needed to get model inp
 
 # Define Focal Loss
 class FocalLoss(nn.Module):
-    def __init__(self, alpha=1, gamma=2, reduction='mean'):
+    def __init__(self, gamma=2, reduction='mean', weight=None): # Removed alpha, added weight
         super().__init__()
-        self.alpha = alpha
         self.gamma = gamma
         self.reduction = reduction
+        self.weight = weight # Per-class weights (alpha_t in Focal Loss formula)
 
     def forward(self, inputs, targets):
-        BCE_loss = F.cross_entropy(inputs, targets, reduction='none')
-        pt = torch.exp(-BCE_loss)
-        F_loss = self.alpha * (1-pt)**self.gamma * BCE_loss
+        # inputs are logits
+        # targets are class indices
+
+        # Compute log-probabilities for NLLLoss
+        logpt = F.log_softmax(inputs, dim=1)
+        
+        # Compute the standard negative log likelihood loss with optional per-class weights
+        # This 'loss' here effectively contains the -alpha_t * log(pt) part if weights are provided
+        loss = F.nll_loss(logpt, targets, reduction='none', weight=self.weight)
+        
+        # Calculate pt for the modulating factor (1 - pt)^gamma
+        # pt = torch.exp(logpt) - gather pt for the true classes
+        pt = torch.exp(logpt.gather(1, targets.unsqueeze(1))).squeeze(1)
+        
+        # Apply the modulating factor
+        focal_term = (1 - pt)**self.gamma
+        F_loss = focal_term * loss
 
         if self.reduction == 'mean':
             return F_loss.mean()
@@ -73,7 +87,7 @@ if __name__ == "__main__":
     # parser.add_argument('--end_frame', type=int, default=82, help='End frame for video clips')
     parser.add_argument('--test_batches', type=int, default=0, help='Number of batches to run for testing (0 for full run)')
     parser.add_argument('--use_focal_loss', action='store_true', help='Use Focal Loss instead of CrossEntropyLoss')
-    parser.add_argument('--focal_loss_alpha', type=float, default=1.0, help='Alpha parameter for Focal Loss')
+    # parser.add_argument('--focal_loss_alpha', type=float, default=1.0, help='Alpha parameter for Focal Loss') # Removed this argument
     parser.add_argument('--focal_loss_gamma', type=float, default=2.0, help='Gamma parameter for Focal Loss')
     parser.add_argument('--num_workers', type=int, default=8, help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
@@ -91,7 +105,7 @@ if __name__ == "__main__":
     LEARNING_RATE = args.lr
     TEST_BATCHES = args.test_batches
     USE_FOCAL_LOSS = args.use_focal_loss
-    FOCAL_LOSS_ALPHA = args.focal_loss_alpha
+    # FOCAL_LOSS_ALPHA = args.focal_loss_alpha # Removed
     FOCAL_LOSS_GAMMA = args.focal_loss_gamma
     NUM_WORKERS = args.num_workers
     ACCUMULATION_STEPS = args.accumulation_steps
@@ -119,7 +133,7 @@ if __name__ == "__main__":
     # Initialize GradScaler for Mixed Precision Training
     scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
 
-    # Helper function to calculate class weights for WeightedRandomSampler
+    # Helper function to calculate class weights for WeightedRandomSampler (will be adapted for Focal Loss)
     def calculate_class_weights(labels_list, num_classes):
         # labels_list is a list of one-hot encoded tensors like [tensor([0, 1, 0]), tensor([1, 0, 0])] for a batch
         # First, concatenate all labels and convert one-hot to class indices
@@ -132,15 +146,25 @@ if __name__ == "__main__":
         total_samples = len(all_labels_indices)
         weights = torch.zeros(num_classes)
         for i in range(num_classes):
-            # Avoid division by zero for classes that might not be present
+            # Avoid division by zero for classes that might not be present by assigning a small weight
+            # or handle more gracefully. Here, setting to 0 implies no contribution from that class
+            # when used as a weight in CrossEntropyLoss/NLLLoss, which might be desired.
             if class_counts[i] > 0:
                 weights[i] = total_samples / class_counts[i]
             else:
-                weights[i] = 0 # Or a very high number, depending on desired behavior for missing classes
+                # If a class is not present in the training data, its weight can be 0 or a very small number
+                # A weight of 0 will effectively ignore this class in the loss calculation.
+                # If we want to penalize misclassifications into this class, a small non-zero value might be better.
+                # For now, let's stick to 0, which is standard for missing classes in inverse frequency.
+                weights[i] = 0 
         
-        # Normalize weights to sum to 1 or max to 1 for stability if needed, but often inverse freq is used directly
-        # For WeightedRandomSampler, raw inverse frequency is suitable
-        return weights
+        # Normalize weights if desired (e.g., to sum to 1 or max to 1). 
+        # For direct use in CrossEntropyLoss 'weight' parameter, raw inverse frequency is common.
+        # Let's normalize them to sum to num_classes for stability.
+        if weights.sum() > 0: # Avoid division by zero if all counts are zero
+            weights = weights / weights.sum() * num_classes
+        
+        return weights.to(DEVICE) # Move weights to the same device as the model
 
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
@@ -152,36 +176,12 @@ if __name__ == "__main__":
 
     action_class_weights = calculate_class_weights(train_dataset.labels_action_list, num_action_classes)
     severity_class_weights = calculate_class_weights(train_dataset.labels_severity_list, num_severity_classes)
-
-    # Combine weights for each sample based on its action and severity labels
-    # This is a bit tricky since each sample has *two* labels. A simple sum/average is one approach.
-    # For simplicity, let's use the average of the individual action and severity weights for each sample.
-    # We need to map each sample's original one-hot label back to its class index and then to its weight.
-    sample_weights = []
-    for i in range(len(train_dataset)):
-        # Assuming labels_action_list and labels_severity_list store one-hot encoded tensors
-        action_label_idx = train_dataset.labels_action_list[i].argmax().item()
-        severity_label_idx = train_dataset.labels_severity_list[i].argmax().item()
-        
-        # Handle cases where weights might be zero for extremely rare classes, prevent NaN or Inf
-        action_w = action_class_weights[action_label_idx] if action_class_weights[action_label_idx] > 0 else 1.0 # Default to 1.0 if class not present
-        severity_w = severity_class_weights[severity_label_idx] if severity_class_weights[severity_label_idx] > 0 else 1.0 # Default to 1.0 if class not present
-        
-        # Average the weights, or multiply, or take max - depends on desired emphasis
-        # Averaging is a good starting point.
-        sample_weights.append((action_w + severity_w) / 2.0)
     
-    sample_weights = torch.DoubleTensor(sample_weights)
-    
-    # Create WeightedRandomSampler
-    # Replacement=True means samples can be drawn more than once (good for highly imbalanced data)
-    weighted_sampler = torch.utils.data.WeightedRandomSampler(
-        weights=sample_weights, 
-        num_samples=len(sample_weights), 
-        replacement=True
-    )
+    print(f"Action class weights: {action_class_weights}")
+    print(f"Severity class weights: {severity_class_weights}")
 
-    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=weighted_sampler, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
+    # Remove WeightedRandomSampler - rely on Focal Loss with per-class weights for imbalance
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
     
     # Initialize validation dataset and dataloader
     val_dataset = MVFoulsDataset(DATA_FOLDER, VAL_SPLIT, START_FRAME, END_FRAME, transform_model=get_val_transforms(MODEL_INPUT_SIZE))
@@ -199,13 +199,13 @@ if __name__ == "__main__":
     model = MVFoulsModel().to(DEVICE)
     
     if USE_FOCAL_LOSS:
-        criterion_action = FocalLoss(alpha=FOCAL_LOSS_ALPHA, gamma=FOCAL_LOSS_GAMMA)
-        criterion_severity = FocalLoss(alpha=FOCAL_LOSS_ALPHA, gamma=FOCAL_LOSS_GAMMA)
-        print(f"Using Focal Loss with alpha={FOCAL_LOSS_ALPHA}, gamma={FOCAL_LOSS_GAMMA}")
+        criterion_action = FocalLoss(gamma=FOCAL_LOSS_GAMMA, weight=action_class_weights) # Pass weights to FocalLoss
+        criterion_severity = FocalLoss(gamma=FOCAL_LOSS_GAMMA, weight=severity_class_weights) # Pass weights to FocalLoss
+        print(f"Using Focal Loss with gamma={FOCAL_LOSS_GAMMA} and per-class weights.")
     else:
-        criterion_action = nn.CrossEntropyLoss()
-        criterion_severity = nn.CrossEntropyLoss()
-        print("Using CrossEntropyLoss")
+        criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
+        criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
+        print("Using CrossEntropyLoss with per-class weights.")
 
     # Initialize optimizer with discriminative learning rates
     # Smaller learning rate for the pre-trained backbone
@@ -319,7 +319,7 @@ if __name__ == "__main__":
 
                     all_action_labels.extend(action_labels_idx.cpu().numpy())
                     all_predicted_actions.extend(predicted_actions.cpu().numpy())
-                    all_severity_labels.extend(severity_labels_idx.cpu().numpy())
+                    all_severity_labels.extend(predicted_severities.cpu().numpy())
                     all_predicted_severities.extend(predicted_severities.cpu().numpy())
 
             if len(all_action_labels) > 0:
