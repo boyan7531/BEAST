@@ -19,11 +19,12 @@ from torchvision.models.video import MViT_V2_S_Weights # Needed to get model inp
 
 # Define Focal Loss
 class FocalLoss(nn.Module):
-    def __init__(self, gamma=2, reduction='mean', weight=None): # Removed alpha, added weight
+    def __init__(self, gamma=2, reduction='mean', alpha=None, weight=None):
         super().__init__()
         self.gamma = gamma
         self.reduction = reduction
-        self.weight = weight # Per-class weights (alpha_t in Focal Loss formula)
+        self.alpha = alpha  # New: per-class alpha tensor (e.g., higher for minorities)
+        self.weight = weight
 
     def forward(self, inputs, targets):
         # inputs are logits
@@ -41,7 +42,7 @@ class FocalLoss(nn.Module):
         pt = torch.exp(logpt.gather(1, targets.unsqueeze(1))).squeeze(1)
         
         # Apply the modulating factor
-        focal_term = (1 - pt)**self.gamma
+        focal_term = (1 - pt) ** self.gamma
         F_loss = focal_term * loss
 
         if self.reduction == 'mean':
@@ -77,7 +78,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 if __name__ == "__main__":
     # Add argument parsing
     parser = argparse.ArgumentParser(description="Train MVFoulsModel")
-    parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs')
+    parser.add_argument('--epochs', type=int, default=30, help='Number of training epochs')
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training and validation')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     # parser.add_argument('--data_folder', type=str, default='mvfouls', help='Path to the dataset folder')
@@ -91,7 +92,7 @@ if __name__ == "__main__":
     parser.add_argument('--focal_loss_gamma', type=float, default=2.0, help='Gamma parameter for Focal Loss')
     parser.add_argument('--num_workers', type=int, default=8, help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
-    parser.add_argument('--accumulation_steps', type=int, default=1, help='Number of batches to accumulate gradients over')
+    parser.add_argument('--accumulation_steps', type=int, default=4, help='Number of batches to accumulate gradients over')
 
     args = parser.parse_args()
 
@@ -109,6 +110,14 @@ if __name__ == "__main__":
     FOCAL_LOSS_GAMMA = args.focal_loss_gamma
     NUM_WORKERS = args.num_workers
     ACCUMULATION_STEPS = args.accumulation_steps
+    
+    print(f"Epochs: {EPOCHS}")
+    print(f"Batch Size: {BATCH_SIZE}")
+    print(f"Learning Rate: {LEARNING_RATE}")
+    print(f"Using Focal Loss: {USE_FOCAL_LOSS}")
+    print(f"Focal Loss Gamma: {FOCAL_LOSS_GAMMA}")
+    print(f"Number of Workers: {NUM_WORKERS}")
+    print(f"Accumulation Steps: {ACCUMULATION_STEPS}")
 
     # Hardcoded values for removed arguments
     DATA_FOLDER = "mvfouls"
@@ -180,8 +189,29 @@ if __name__ == "__main__":
     print(f"Action class weights: {action_class_weights}")
     print(f"Severity class weights: {severity_class_weights}")
 
-    # Remove WeightedRandomSampler - rely on Focal Loss with per-class weights for imbalance
-    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
+    # Compute mild weighted sampling weights: 1 / sqrt(class_freq) for combined action-severity classes
+    all_action_labels = torch.cat(train_dataset.labels_action_list, dim=0).argmax(dim=1).cpu().numpy()
+    all_severity_labels = torch.cat(train_dataset.labels_severity_list, dim=0).argmax(dim=1).cpu().numpy()
+    combined_labels = all_action_labels * num_severity_classes + all_severity_labels
+    class_counts = Counter(combined_labels)
+    num_combined_classes = num_action_classes * num_severity_classes
+    class_weights = np.zeros(num_combined_classes)
+    for i in range(num_combined_classes):
+        count = class_counts.get(i, 0)
+        if count > 0:
+            class_weights[i] = 1 / np.sqrt(count)
+
+    # Normalize weights to make the max weight 1 (optional, for stability)
+    if class_weights.max() > 0:
+        class_weights /= class_weights.max()
+
+    # Compute per-sample weights
+    sample_weights = [class_weights[all_action_labels[j] * num_severity_classes + all_severity_labels[j]] for j in range(len(train_dataset))]
+
+    # Create WeightedRandomSampler
+    sampler = torch.utils.data.WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
+
+    train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=sampler, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
     
     # Initialize validation dataset and dataloader
     val_dataset = MVFoulsDataset(DATA_FOLDER, VAL_SPLIT, START_FRAME, END_FRAME, transform_model=get_val_transforms(MODEL_INPUT_SIZE))
@@ -199,9 +229,12 @@ if __name__ == "__main__":
     model = MVFoulsModel().to(DEVICE)
     
     if USE_FOCAL_LOSS:
-        criterion_action = FocalLoss(gamma=FOCAL_LOSS_GAMMA, weight=action_class_weights) # Pass weights to FocalLoss
-        criterion_severity = FocalLoss(gamma=FOCAL_LOSS_GAMMA, weight=severity_class_weights) # Pass weights to FocalLoss
-        print(f"Using Focal Loss with gamma={FOCAL_LOSS_GAMMA} and per-class weights.")
+        # Example alpha: adjust based on class frequencies (index 0: Tackling, 1: Standing Tackling, etc.)
+        action_alpha = torch.tensor([0.8, 0.5, 2.0, 1.5, 1.5, 2.0, 1.5, 2.0], device=DEVICE)  # Lower for majors, higher for minors
+        severity_alpha = torch.tensor([1.0, 0.5, 1.5, 2.0], device=DEVICE)  # Adjust similarly
+        criterion_action = FocalLoss(gamma=2.0, alpha=action_alpha, weight=action_class_weights)
+        criterion_severity = FocalLoss(gamma=2.0, alpha=severity_alpha, weight=severity_class_weights)
+        print(f"Using Focal Loss with gamma=2.0, per-class alpha, and weights.")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss

@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 import os
 
 class MultiClipAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads=4):
+    def __init__(self, embed_dim, num_heads=8):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
@@ -86,7 +86,7 @@ class MVFoulsModel(nn.Module):
         )
 
         # Initialize the MultiClipAttention module with num_heads
-        self.attention_module = MultiClipAttention(in_features, num_heads=4) # Using 4 heads as an example
+        self.attention_module = MultiClipAttention(in_features, num_heads=8) # Using 4 heads as an example
 
         # Define new classification heads for action and severity, connected to the shared head
         self.action_head = nn.Sequential(
