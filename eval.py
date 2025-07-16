@@ -84,11 +84,13 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
     with torch.no_grad():
         for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm(test_dataloader, desc="Evaluating")):
             # Move data to device
-            videos = videos.to(DEVICE)
+            # videos is now a list of tensors, where each tensor corresponds to an action event
+            videos = [v.to(DEVICE) for v in videos]
             
             # Convert one-hot encoded labels to class indices
-            action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
-            severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
+            # Labels are now (batch_size, num_classes) directly from custom_collate_fn
+            action_labels_idx = torch.argmax(action_labels, dim=1).to(DEVICE)
+            severity_labels_idx = torch.argmax(severity_labels, dim=1).to(DEVICE)
 
             # Forward pass
             action_logits, severity_logits = model(videos)
@@ -104,14 +106,18 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
             all_predicted_severities.extend(predicted_severity_idx.cpu().numpy())
 
             # Map to human-readable labels for JSON output
-            predicted_action_class = action_labels_map.get(predicted_action_idx[0].item(), "Unknown Action")
-            
-            predicted_offence = offence_labels_map.get(predicted_severity_idx[0].item(), "Unknown Offence")
-            predicted_severity_value = severity_numerical_map.get(predicted_severity_idx[0].item(), "")
+            # Loop through the batch of predictions and action_ids
+            for batch_idx in range(len(action_ids)): # Iterate over the batch size (number of actions)
+                current_action_id = action_ids[batch_idx]
+                current_predicted_action_idx = predicted_action_idx[batch_idx].item()
+                current_predicted_severity_idx = predicted_severity_idx[batch_idx].item()
 
-            # Populate results dictionary
-            for idx, action_id in enumerate(action_ids):
-                results["Actions"][str(action_id)] = {
+                predicted_action_class = action_labels_map.get(current_predicted_action_idx, "Unknown Action")
+                predicted_offence = offence_labels_map.get(current_predicted_severity_idx, "Unknown Offence")
+                predicted_severity_value = severity_numerical_map.get(current_predicted_severity_idx, "")
+
+                # Populate results dictionary
+                results["Actions"][str(current_action_id)] = {
                     "Action class": predicted_action_class,
                     "Offence": predicted_offence,
                     "Severity": predicted_severity_value

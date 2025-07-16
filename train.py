@@ -319,7 +319,7 @@ if __name__ == "__main__":
 
                     all_action_labels.extend(action_labels_idx.cpu().numpy())
                     all_predicted_actions.extend(predicted_actions.cpu().numpy())
-                    all_severity_labels.extend(predicted_severities.cpu().numpy())
+                    all_severity_labels.extend(severity_labels_idx.cpu().numpy()) # Corrected: Use true labels
                     all_predicted_severities.extend(predicted_severities.cpu().numpy())
 
             if len(all_action_labels) > 0:

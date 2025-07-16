@@ -100,20 +100,27 @@ class MVFoulsModel(nn.Module):
             nn.Linear(hidden_dim, 4) # 4 classes for severity
         )
 
-    def forward(self, x):
-        # x is a batch of videos from the DataLoader, shape: (Total_Clips_in_Batch, C, T, H, W)
+    def forward(self, x_list):
+        # x_list is now a list of tensors, where each tensor corresponds to an action event
+        # Each tensor in x_list has shape: (num_clips_for_action_i, C, T, H, W)
         
-        # The MViT model expects input in (B, C, T, H, W) format, which is already provided by the DataLoader
-        all_clips_batch = x
-        # Pass through the MViT backbone
-        clip_features = self.model(all_clips_batch) # (total_num_clips, in_features)
+        aggregated_features_batch = []
+        for x_clips_for_action in x_list:
+            # Pass all clips for a single action through the MViT backbone
+            # x_clips_for_action shape: (num_clips_for_action, C, T, H, W)
+            clip_features = self.model(x_clips_for_action) # (num_clips_for_action, in_features)
 
-        # Apply attention mechanism to combine features from multiple clips if necessary
-        # If there's only one clip per action in the batch, this might not be needed or will act as passthrough
-        # For now, assuming clip_features is already the combined features if needed, or single features.
+            # Apply MultiClipAttention to aggregate features for this action
+            # The MultiClipAttention module is designed to handle this (num_clips, embed_dim) input
+            aggregated_feature = self.attention_module(clip_features) # (embed_dim)
+            aggregated_features_batch.append(aggregated_feature)
         
+        # Stack the aggregated features to form a batch for the shared head
+        # Resulting shape: (batch_size, embed_dim) where batch_size is the number of action events in the batch
+        final_batch_features = torch.stack(aggregated_features_batch, dim=0)
+
         # Apply shared head
-        shared_features = self.shared_head(clip_features)
+        shared_features = self.shared_head(final_batch_features)
 
         # Apply action and severity heads
         action_logits = self.action_head(shared_features)
