@@ -90,6 +90,108 @@ class FocalLoss(nn.Module):
         else:
             return F_loss
 
+# Asymmetric Focal Loss for extreme class imbalance
+class AsymmetricFocalLoss(nn.Module):
+    def __init__(self, gamma_pos=1.0, gamma_neg=4.0, alpha=0.25, reduction='mean', weight=None):
+        super().__init__()
+        self.gamma_pos = gamma_pos
+        self.gamma_neg = gamma_neg
+        self.alpha = alpha
+        self.reduction = reduction
+        self.weight = weight
+
+    def forward(self, inputs, targets):
+        # Convert to probabilities
+        p = torch.sigmoid(inputs)
+        
+        # For multi-class, we need to handle this differently
+        if inputs.dim() > 1 and inputs.size(1) > 1:
+            # Multi-class case - convert to one-hot and use cross-entropy style
+            ce_loss = F.cross_entropy(inputs, targets, reduction='none', weight=self.weight)
+            p_t = torch.exp(-ce_loss)
+            
+            # Apply asymmetric focusing
+            alpha_t = self.alpha
+            focal_weight = alpha_t * (1 - p_t) ** self.gamma_pos
+            
+            focal_loss = focal_weight * ce_loss
+        else:
+            # Binary case
+            ce_loss = F.binary_cross_entropy_with_logits(inputs, targets.float(), reduction='none')
+            p_t = p * targets + (1 - p) * (1 - targets)
+            alpha_t = self.alpha * targets + (1 - self.alpha) * (1 - targets)
+            
+            # Asymmetric focusing
+            focal_weight = alpha_t * ((1 - p_t) ** self.gamma_pos) * targets + \
+                          (1 - alpha_t) * (p_t ** self.gamma_neg) * (1 - targets)
+            
+            focal_loss = focal_weight * ce_loss
+
+        if self.reduction == 'mean':
+            return focal_loss.mean()
+        elif self.reduction == 'sum':
+            return focal_loss.sum()
+        else:
+            return focal_loss
+
+# Stratified Batch Sampler to ensure minority classes in every batch
+class StratifiedBatchSampler:
+    def __init__(self, labels, batch_size, min_minority_per_batch=1):
+        self.labels = labels
+        self.batch_size = batch_size
+        self.min_minority_per_batch = min_minority_per_batch
+        
+        # Group indices by class
+        self.class_indices = {}
+        for idx, label in enumerate(labels):
+            class_id = label.item() if torch.is_tensor(label) else label
+            if class_id not in self.class_indices:
+                self.class_indices[class_id] = []
+            self.class_indices[class_id].append(idx)
+        
+        # Identify minority classes (< 5% of data)
+        total_samples = len(labels)
+        self.minority_classes = []
+        for class_id, indices in self.class_indices.items():
+            if len(indices) / total_samples < 0.05:
+                self.minority_classes.append(class_id)
+        
+        print(f"Minority classes identified: {self.minority_classes}")
+        
+    def __iter__(self):
+        # Create batches ensuring minority representation
+        all_indices = list(range(len(self.labels)))
+        random.shuffle(all_indices)
+        
+        batches = []
+        i = 0
+        while i < len(all_indices):
+            batch = []
+            
+            # First, add minority samples if available
+            minority_added = 0
+            for class_id in self.minority_classes:
+                if minority_added < self.min_minority_per_batch and self.class_indices[class_id]:
+                    minority_idx = random.choice(self.class_indices[class_id])
+                    if minority_idx in all_indices[i:]:
+                        batch.append(minority_idx)
+                        all_indices.remove(minority_idx)
+                        minority_added += 1
+            
+            # Fill the rest of the batch
+            remaining_slots = self.batch_size - len(batch)
+            end_idx = min(i + remaining_slots, len(all_indices))
+            batch.extend(all_indices[i:end_idx])
+            i = end_idx
+            
+            if len(batch) > 0:
+                batches.append(batch)
+        
+        return iter(batches)
+    
+    def __len__(self):
+        return (len(self.labels) + self.batch_size - 1) // self.batch_size
+
 # Function to set random seeds for reproducibility
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -180,8 +282,8 @@ if __name__ == "__main__":
     # Initialize GradScaler for Mixed Precision Training
     scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
 
-    # Helper function to calculate DISTRIBUTION-AWARE class weights
-    def calculate_class_weights(labels_list, num_classes, epoch=0):
+    # Helper function to calculate AGGRESSIVE SEVERITY-AWARE class weights
+    def calculate_class_weights(labels_list, num_classes, task_type="action"):
         # labels_list is a list of one-hot encoded tensors like [tensor([0, 1, 0]), tensor([1, 0, 0])] for a batch
         # First, concatenate all labels and convert one-hot to class indices
         all_labels_indices = torch.cat(labels_list, dim=0).argmax(dim=1).cpu().numpy()
@@ -192,34 +294,46 @@ if __name__ == "__main__":
         
         # Calculate class frequencies and print for debugging
         class_frequencies = np.array([class_counts.get(i, 0) / total_samples for i in range(num_classes)])
-        print(f"Class frequencies: {class_frequencies}")
+        print(f"{task_type.capitalize()} class frequencies: {class_frequencies}")
         
         weights = torch.zeros(num_classes)
-        for i in range(num_classes):
-            freq = class_frequencies[i]
-            if freq > 0:
-                # Smooth inverse frequency weighting with controlled scaling
-                # Use a continuous function instead of hard thresholds
-                if freq > 0.4:  # Very dominant classes (>40%)
-                    # Minimal rebalancing for very dominant classes
-                    weights[i] = max(0.9, 1.0 / (freq ** 0.2))
-                elif freq > 0.25:  # Major classes (25-40%)
-                    # Light rebalancing for major classes  
-                    weights[i] = max(1.0, min(1.3, 1.0 / (freq ** 0.4)))
-                elif freq > 0.1:  # Medium classes (10-25%)
-                    # Moderate rebalancing for medium classes
-                    weights[i] = min(1.6, 1.0 / (freq ** 0.5))
-                elif freq > 0.03:  # Small classes (3-10%)
-                    # Stronger rebalancing for small classes
-                    weights[i] = min(2.0, 1.0 / (freq ** 0.6))
-                else:  # Very small classes (<3%)
-                    # Controlled strong rebalancing for very small classes
-                    weights[i] = min(2.5, max(1.8, 1.0 / (freq ** 0.7)))
-            else:
-                weights[i] = 1.0  # Default weight for missing classes
         
-        print(f"Calculated weights: {weights}")
-        return weights.to(DEVICE) # Move weights to the same device as the model
+        if task_type == "severity":
+            # AGGRESSIVE rebalancing for severity classification
+            for i in range(num_classes):
+                freq = class_frequencies[i]
+                if freq > 0:
+                    if freq > 0.5:  # Dominant class (>50%) - "Offence + No Card"
+                        weights[i] = max(0.7, 1.0 / (freq ** 0.3))
+                    elif freq > 0.25:  # Major class (25-50%) - "Offence + Yellow Card"
+                        weights[i] = min(2.0, 1.0 / (freq ** 0.6))
+                    elif freq > 0.05:  # Medium class (5-25%) - "No Offence"
+                        weights[i] = min(3.5, 1.0 / (freq ** 0.8))
+                    else:  # Minority class (<5%) - "Offence + Red Card"
+                        # EXTREME rebalancing for Red Card (1.16%)
+                        weights[i] = min(10.0, max(5.0, 1.0 / (freq ** 0.9)))
+                else:
+                    weights[i] = 1.0
+        else:
+            # Conservative rebalancing for action classification
+            for i in range(num_classes):
+                freq = class_frequencies[i]
+                if freq > 0:
+                    if freq > 0.4:  # Very dominant classes (>40%)
+                        weights[i] = max(0.9, 1.0 / (freq ** 0.2))
+                    elif freq > 0.25:  # Major classes (25-40%)
+                        weights[i] = max(1.0, min(1.3, 1.0 / (freq ** 0.4)))
+                    elif freq > 0.1:  # Medium classes (10-25%)
+                        weights[i] = min(1.6, 1.0 / (freq ** 0.5))
+                    elif freq > 0.03:  # Small classes (3-10%)
+                        weights[i] = min(2.0, 1.0 / (freq ** 0.6))
+                    else:  # Very small classes (<3%)
+                        weights[i] = min(2.5, max(1.8, 1.0 / (freq ** 0.7)))
+                else:
+                    weights[i] = 1.0
+        
+        print(f"Calculated {task_type} weights: {weights}")
+        return weights.to(DEVICE)
 
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
@@ -229,40 +343,46 @@ if __name__ == "__main__":
     num_action_classes = 8 # As defined in data_loader.py
     num_severity_classes = 4 # As defined in data_loader.py
 
-    action_class_weights = calculate_class_weights(train_dataset.labels_action_list, num_action_classes)
-    severity_class_weights = calculate_class_weights(train_dataset.labels_severity_list, num_severity_classes)
+    action_class_weights = calculate_class_weights(train_dataset.labels_action_list, num_action_classes, "action")
+    severity_class_weights = calculate_class_weights(train_dataset.labels_severity_list, num_severity_classes, "severity")
     
     print(f"Action class weights: {action_class_weights}")
     print(f"Severity class weights: {severity_class_weights}")
 
-    # DISTRIBUTION-AWARE sampling strategy that respects majority classes
+    # SEVERITY-FOCUSED sampling strategy with stratified batching
     all_action_labels = torch.cat(train_dataset.labels_action_list, dim=0).argmax(dim=1).cpu().numpy()
     all_severity_labels = torch.cat(train_dataset.labels_severity_list, dim=0).argmax(dim=1).cpu().numpy()
     
-    # Calculate action class frequencies for sampling adjustment
-    action_counts = Counter(all_action_labels)
-    total_samples = len(all_action_labels)
+    # Calculate severity class frequencies for aggressive sampling adjustment
+    severity_counts = Counter(all_severity_labels)
+    total_samples = len(all_severity_labels)
     
-    # Create CONSERVATIVE sampling weights based on action classes only
+    # Create AGGRESSIVE sampling weights based on SEVERITY classes (not action)
     sample_weights = []
     for j in range(len(train_dataset)):
-        action_class = all_action_labels[j]
-        freq = action_counts[action_class] / total_samples
+        severity_class = all_severity_labels[j]
+        freq = severity_counts[severity_class] / total_samples
         
-        if freq > 0.3:  # Majority classes (Standing tackling: 44.76%)
-            # Minimal adjustment for majority classes
-            weight = max(0.8, min(1.2, 1.0 / (freq ** 0.2)))
-        elif freq > 0.1:  # Medium classes (Tackling: 15.39%, Challenge: 14.49%, Holding: 11.77%)
-            # Moderate adjustment for medium classes
-            weight = min(1.5, 1.0 / (freq ** 0.4))
-        else:  # Minority classes (<10%)
-            # Controlled adjustment for minorities
-            weight = min(1.8, max(1.2, 1.0 / (freq ** 0.5)))
+        if freq > 0.5:  # Dominant class (>50%) - "Offence + No Card"
+            # Strong downweighting for dominant class
+            weight = max(0.5, 1.0 / (freq ** 0.4))
+        elif freq > 0.25:  # Major class (25-50%) - "Offence + Yellow Card"
+            # Moderate adjustment for major class
+            weight = min(1.5, 1.0 / (freq ** 0.6))
+        elif freq > 0.05:  # Medium class (5-25%) - "No Offence"
+            # Strong upweighting for medium class
+            weight = min(3.0, 1.0 / (freq ** 0.8))
+        else:  # Minority class (<5%) - "Offence + Red Card"
+            # EXTREME upweighting for Red Card (1.16%)
+            weight = min(8.0, max(4.0, 1.0 / (freq ** 0.95)))
         
         sample_weights.append(weight)
 
-    # Create WeightedRandomSampler with conservative weights
+    # Create WeightedRandomSampler with aggressive severity-based weights
     sampler = torch.utils.data.WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
+    
+    print(f"Severity-based sampling weights range: {min(sample_weights):.2f} to {max(sample_weights):.2f}")
+    print(f"Red Card samples will be sampled ~{max(sample_weights)/min(sample_weights):.1f}x more frequently")
 
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=sampler, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
     
@@ -286,12 +406,12 @@ if __name__ == "__main__":
         # Distribution-aware alpha values that complement the class weights
         # Lower alpha for majority classes, higher for minorities (but not extreme)
         action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 1.8, 2.0, 1.4, 2.2], device=DEVICE)  # Aligned with frequencies
-        severity_alpha = torch.tensor([1.1, 0.9, 1.3, 2.0], device=DEVICE)
+        severity_alpha = torch.tensor([2.5, 0.8, 1.8, 4.0], device=DEVICE)  # AGGRESSIVE for Red Card
         
-        # Use different label smoothing for majority vs minority classes
+        # Use different parameters for action vs severity
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
-        criterion_severity = FocalLoss(gamma=1.2, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.05)
-        print(f"Using Focal Loss with gamma=1.2, distribution-aware alpha, class weights, and conservative label smoothing=0.05.")
+        criterion_severity = FocalLoss(gamma=2.5, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.12)
+        print(f"Using Focal Loss with AGGRESSIVE severity settings: gamma=2.5, alpha up to 4.0 for Red Card, label_smoothing=0.12")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -302,8 +422,10 @@ if __name__ == "__main__":
     # Standard learning rate for the newly added heads
     optimizer = optim.Adam([
         {'params': model.model.parameters(), 'lr': LEARNING_RATE * 0.1}, # 1/10th of the main LR for backbone
-        {'params': model.shared_head.parameters()},
-        {'params': model.attention_module.parameters()},
+        {'params': model.action_feature_head.parameters()},
+        {'params': model.severity_feature_head.parameters()},
+        {'params': model.action_attention.parameters()},
+        {'params': model.severity_attention.parameters()},
         {'params': model.action_head.parameters()},
         {'params': model.severity_head.parameters()}
     ], lr=LEARNING_RATE) # Default LR for custom heads
@@ -444,6 +566,13 @@ if __name__ == "__main__":
                 print(f"  Accuracy: {severity_accuracy:.4f}")
                 print(f"  Macro Recall: {severity_recall:.4f}")
                 print(f"  Macro F1-score: {severity_f1:.4f}")
+
+                # Per-class severity metrics to monitor overfitting
+                severity_precision_per_class, severity_recall_per_class, severity_f1_per_class, _ = precision_recall_fscore_support(all_severity_labels, all_predicted_severities, average=None, zero_division=0)
+                severity_classes = ["No Offence", "Offence + No Card", "Offence + Yellow Card", "Offence + Red Card"]
+                print("  Per-class Severity Recall:")
+                for i, (cls, recall) in enumerate(zip(severity_classes, severity_recall_per_class)):
+                    print(f"    {cls}: {recall:.3f}")
                 
                 combined_macro_recall = (action_recall + severity_recall) / 2
                 combined_macro_f1 = (action_f1 + severity_f1) / 2

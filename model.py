@@ -75,56 +75,80 @@ class MVFoulsModel(nn.Module):
         # Remove the original classification head as we're replacing it.
         self.model.head = nn.Identity()
 
-        # Define a shared custom head for feature processing
+        # Define separate feature extractors for action and severity
         hidden_dim = 512
-        self.shared_head = nn.Sequential(
+        
+        # Action-specific feature processing
+        self.action_feature_head = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, hidden_dim), 
             nn.GELU(), 
-            nn.Dropout(0.4)
+            nn.Dropout(0.3)  # Lower dropout for action
+        )
+        
+        # Severity-specific feature processing with higher regularization
+        self.severity_feature_head = nn.Sequential(
+            nn.Linear(in_features, hidden_dim),
+            nn.GELU(),
+            nn.Linear(hidden_dim, hidden_dim), 
+            nn.GELU(), 
+            nn.Dropout(0.5)  # Higher dropout for severity to prevent overfitting
         )
 
-        # Initialize the MultiClipAttention module with num_heads
-        self.attention_module = MultiClipAttention(in_features, num_heads=8) # Using 4 heads as an example
+        # Initialize separate attention modules for each task
+        self.action_attention = MultiClipAttention(in_features, num_heads=8)
+        self.severity_attention = MultiClipAttention(in_features, num_heads=8)
 
-        # Define new classification heads for action and severity, connected to the shared head
+        # Define task-specific classification heads
         self.action_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.GELU(),
+            nn.Dropout(0.2),
             nn.Linear(hidden_dim, 8)  # 8 classes for action
         )
+        
+        # More complex severity head to handle extreme imbalance
         self.severity_head = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
             nn.GELU(),
-            nn.Linear(hidden_dim, 4) # 4 classes for severity
+            nn.Dropout(0.4),
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.GELU(),
+            nn.Dropout(0.3),
+            nn.Linear(hidden_dim // 2, 4)  # 4 classes for severity
         )
 
     def forward(self, x_list):
         # x_list is now a list of tensors, where each tensor corresponds to an action event
         # Each tensor in x_list has shape: (num_clips_for_action_i, C, T, H, W)
         
-        aggregated_features_batch = []
+        action_aggregated_features_batch = []
+        severity_aggregated_features_batch = []
+        
         for x_clips_for_action in x_list:
             # Pass all clips for a single action through the MViT backbone
             # x_clips_for_action shape: (num_clips_for_action, C, T, H, W)
             clip_features = self.model(x_clips_for_action) # (num_clips_for_action, in_features)
 
-            # Apply MultiClipAttention to aggregate features for this action
-            # The MultiClipAttention module is designed to handle this (num_clips, embed_dim) input
-            aggregated_feature = self.attention_module(clip_features) # (embed_dim)
-            aggregated_features_batch.append(aggregated_feature)
+            # Apply separate attention modules for each task
+            action_aggregated_feature = self.action_attention(clip_features) # (embed_dim)
+            severity_aggregated_feature = self.severity_attention(clip_features) # (embed_dim)
+            
+            action_aggregated_features_batch.append(action_aggregated_feature)
+            severity_aggregated_features_batch.append(severity_aggregated_feature)
         
-        # Stack the aggregated features to form a batch for the shared head
-        # Resulting shape: (batch_size, embed_dim) where batch_size is the number of action events in the batch
-        final_batch_features = torch.stack(aggregated_features_batch, dim=0)
+        # Stack the aggregated features to form batches for each task
+        action_batch_features = torch.stack(action_aggregated_features_batch, dim=0)
+        severity_batch_features = torch.stack(severity_aggregated_features_batch, dim=0)
 
-        # Apply shared head
-        shared_features = self.shared_head(final_batch_features)
+        # Apply task-specific feature heads
+        action_features = self.action_feature_head(action_batch_features)
+        severity_features = self.severity_feature_head(severity_batch_features)
 
-        # Apply action and severity heads
-        action_logits = self.action_head(shared_features)
-        severity_logits = self.severity_head(shared_features)
+        # Apply classification heads
+        action_logits = self.action_head(action_features)
+        severity_logits = self.severity_head(severity_features)
 
         return action_logits, severity_logits
         
@@ -141,11 +165,12 @@ if __name__ == "__main__":
         exit()
         
     print("\nParameter counts for new heads:")
-    shared_head_params = sum(p.numel() for p in model.shared_head.parameters() if p.requires_grad)
-    print(f"Shared head parameters: {shared_head_params}")
+    action_feature_head_params = sum(p.numel() for p in model.action_feature_head.parameters() if p.requires_grad)
+    print(f"Action feature head parameters: {action_feature_head_params}")
+    severity_feature_head_params = sum(p.numel() for p in model.severity_feature_head.parameters() if p.requires_grad)
+    print(f"Severity feature head parameters: {severity_feature_head_params}")
     action_head_params = sum(p.numel() for p in model.action_head.parameters() if p.requires_grad)
     print(f"Action head parameters: {action_head_params}")
-
     severity_head_params = sum(p.numel() for p in model.severity_head.parameters() if p.requires_grad)
     print(f"Severity head parameters: {severity_head_params}")
 
@@ -181,7 +206,12 @@ if __name__ == "__main__":
         exit()
 
     try:
-        dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame)
+        # Create a simple transform for testing
+        from torchvision import transforms
+        from transform import get_val_transforms
+        simple_transform = get_val_transforms((224, 224))
+        
+        dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame, transform_model=simple_transform)
         dataloader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=custom_collate_fn)
         print(f"Dataset initialized with {len(dataset)} samples. DataLoader created.")
     except Exception as e:
