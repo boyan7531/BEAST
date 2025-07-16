@@ -242,11 +242,13 @@ if __name__ == "__main__":
                 break
 
             # Move data to the appropriate device
-            videos = videos.to(DEVICE) # Ensure videos is a single tensor moved to device
+            # videos is now a list of tensors, where each tensor corresponds to an action event
+            videos = [v.to(DEVICE) for v in videos] # Apply .to(DEVICE) to each video in the list
             
             # Convert one-hot encoded labels to class indices
-            action_labels = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
-            severity_labels = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
+            # Labels are now (batch_size, num_classes) directly from custom_collate_fn
+            action_labels = torch.argmax(action_labels, dim=1).to(DEVICE)
+            severity_labels = torch.argmax(severity_labels, dim=1).to(DEVICE)
 
             # Forward pass with automatic mixed precision
             with torch.amp.autocast(device_type='cuda'):
@@ -301,9 +303,9 @@ if __name__ == "__main__":
                         print(f"Reached {TEST_BATCHES} batches for testing, breaking validation loop.")
                         break
 
-                    videos = videos.to(DEVICE)
-                    action_labels_idx = torch.argmax(action_labels.squeeze(1), dim=1).to(DEVICE)
-                    severity_labels_idx = torch.argmax(severity_labels.squeeze(1), dim=1).to(DEVICE)
+                    videos = [v.to(DEVICE) for v in videos] # Apply .to(DEVICE) to each video in the list
+                    action_labels_idx = torch.argmax(action_labels, dim=1).to(DEVICE)
+                    severity_labels_idx = torch.argmax(severity_labels, dim=1).to(DEVICE)
 
                     with torch.amp.autocast(device_type='cuda'):
                         action_logits, severity_logits = model(videos)
