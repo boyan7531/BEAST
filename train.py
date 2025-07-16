@@ -40,11 +40,20 @@ def mixup_data(x_list, y_action, y_severity, alpha=0.2):
     batch_size = len(x_list)
     index = torch.randperm(batch_size)
 
-    # Mix the video data
+    # Mix the video data - handle different clip lengths
     mixed_x = []
     for i in range(batch_size):
-        # For each video tensor in the batch, mix with another
-        mixed_video = lam * x_list[i] + (1 - lam) * x_list[index[i]]
+        video_a = x_list[i]
+        video_b = x_list[index[i]]
+        
+        # Handle different numbers of clips by taking minimum
+        min_clips = min(video_a.shape[0], video_b.shape[0])
+        
+        # Truncate both videos to same length and mix
+        video_a_truncated = video_a[:min_clips]
+        video_b_truncated = video_b[:min_clips]
+        
+        mixed_video = lam * video_a_truncated + (1 - lam) * video_b_truncated
         mixed_x.append(mixed_video)
 
     # Mix the labels
