@@ -217,6 +217,7 @@ if __name__ == "__main__":
     val_dataset = MVFoulsDataset(DATA_FOLDER, VAL_SPLIT, START_FRAME, END_FRAME, transform_model=get_val_transforms(MODEL_INPUT_SIZE))
     val_dataloader = DataLoader(val_dataset, batch_size=BATCH_SIZE, shuffle=False, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
 
+
     # Check if datasets have samples
     if len(train_dataset) == 0:
         print("No samples in training dataset. Please ensure the dataset is correctly prepared and downloaded.")
@@ -229,12 +230,11 @@ if __name__ == "__main__":
     model = MVFoulsModel().to(DEVICE)
     
     if USE_FOCAL_LOSS:
-        # Example alpha: adjust based on class frequencies (index 0: Tackling, 1: Standing Tackling, etc.)
-        action_alpha = torch.tensor([0.8, 0.5, 2.0, 1.5, 1.5, 2.0, 1.5, 2.0], device=DEVICE)  # Lower for majors, higher for minors
-        severity_alpha = torch.tensor([1.0, 0.5, 1.5, 2.0], device=DEVICE)  # Adjust similarly
+        action_alpha = torch.tensor([0.9, 0.7, 1.5, 1.2, 1.2, 1.5, 1.2, 1.5], device=DEVICE)  # Milder values
+        severity_alpha = torch.tensor([1.0, 0.7, 1.2, 1.5], device=DEVICE)
         criterion_action = FocalLoss(gamma=2.0, alpha=action_alpha, weight=action_class_weights)
         criterion_severity = FocalLoss(gamma=2.0, alpha=severity_alpha, weight=severity_class_weights)
-        print(f"Using Focal Loss with gamma=2.0, per-class alpha, and weights.")
+        print(f"Using Focal Loss with gamma=2.0, milder per-class alpha, and weights.")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -251,8 +251,8 @@ if __name__ == "__main__":
         {'params': model.severity_head.parameters()}
     ], lr=LEARNING_RATE) # Default LR for custom heads
 
-    # Initialize learning rate scheduler (CosineAnnealingLR)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=EPOCHS) # T_max is the number of training epochs
+    # Initialize learning rate scheduler (ReduceLROnPlateau)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
 
     print("Training setup complete. Starting training loop...")
 
@@ -385,8 +385,8 @@ if __name__ == "__main__":
                 avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
                 print(f"Validation Loss: {avg_val_loss:.4f}")
 
-                # Step the learning rate scheduler (for CosineAnnealingLR, no arguments needed here)
-                scheduler.step()
+                # Step the learning rate scheduler with validation loss
+                scheduler.step(avg_val_loss)
             else:
                 print("No samples processed in validation.")
 
