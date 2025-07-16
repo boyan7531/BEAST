@@ -17,6 +17,18 @@ import torch.optim.lr_scheduler # Import lr_scheduler
 from transform import get_train_transforms, get_val_transforms # Import new transform functions
 from torchvision.models.video import MViT_V2_S_Weights # Needed to get model input size
 
+# Smart Rebalancing System imports
+from smart_rebalancer import SmartRebalancer, RebalancingConfig
+from rebalancing_integration import (
+    extract_performance_metrics,
+    create_rebalancer_from_dataset,
+    log_rebalancing_status,
+    update_focal_loss_from_rebalancer,
+    get_mixup_params_from_rebalancer,
+    ACTION_CLASS_NAMES,
+    SEVERITY_CLASS_NAMES
+)
+
 # Mixup function for data augmentation
 def mixup_data(x_list, y_action, y_severity, alpha=0.2):
     """Apply mixup augmentation to video data and labels"""
@@ -233,6 +245,12 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=8, help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--accumulation_steps', type=int, default=4, help='Number of batches to accumulate gradients over')
+    
+    # Smart Rebalancing System arguments
+    parser.add_argument('--use_smart_rebalancing', action='store_true', help='Enable smart rebalancing system')
+    parser.add_argument('--min_class_recall', type=float, default=0.3, help='Minimum acceptable recall per class')
+    parser.add_argument('--target_macro_recall', type=float, default=0.7, help='Target macro-averaged recall')
+    parser.add_argument('--adaptation_rate', type=float, default=0.1, help='Rate of rebalancing adaptations')
 
     args = parser.parse_args()
 
@@ -255,9 +273,16 @@ if __name__ == "__main__":
     print(f"Batch Size: {BATCH_SIZE}")
     print(f"Learning Rate: {LEARNING_RATE}")
     print(f"Using Focal Loss: {USE_FOCAL_LOSS}")
-    print(f"Focal Loss Gamma: {FOCAL_LOSS_GAMMA}")
     print(f"Number of Workers: {NUM_WORKERS}")
     print(f"Accumulation Steps: {ACCUMULATION_STEPS}")
+    
+    # Smart Rebalancing System configuration
+    USE_SMART_REBALANCING = args.use_smart_rebalancing
+    print(f"Smart Rebalancing: {'Enabled' if USE_SMART_REBALANCING else 'Disabled'}")
+    if USE_SMART_REBALANCING:
+        print(f"  Min Class Recall: {args.min_class_recall}")
+        print(f"  Target Macro Recall: {args.target_macro_recall}")
+        print(f"  Adaptation Rate: {args.adaptation_rate}")
 
     # Hardcoded values for removed arguments
     DATA_FOLDER = "mvfouls"
@@ -399,6 +424,23 @@ if __name__ == "__main__":
     print(f"Number of batches in training dataloader: {len(train_dataloader)}")
     print(f"Number of batches in validation dataloader: {len(val_dataloader)}")
 
+    # Initialize Smart Rebalancing System if enabled
+    rebalancer = None
+    if USE_SMART_REBALANCING:
+        print("\nInitializing Smart Rebalancing System...")
+        config = RebalancingConfig(
+            min_class_recall=args.min_class_recall,
+            target_macro_recall=args.target_macro_recall,
+            adaptation_rate=args.adaptation_rate
+        )
+        
+        rebalancer = create_rebalancer_from_dataset(
+            train_dataset,
+            config=config,
+            save_dir="rebalancing_logs"
+        )
+        print("Smart Rebalancing System initialized successfully!")
+
     # 3. Initialize Model, Loss Functions, and Optimizer
     model = MVFoulsModel().to(DEVICE)
     
@@ -422,10 +464,8 @@ if __name__ == "__main__":
     # Standard learning rate for the newly added heads
     optimizer = optim.Adam([
         {'params': model.model.parameters(), 'lr': LEARNING_RATE * 0.1}, # 1/10th of the main LR for backbone
-        {'params': model.action_feature_head.parameters()},
-        {'params': model.severity_feature_head.parameters()},
-        {'params': model.action_attention.parameters()},
-        {'params': model.severity_attention.parameters()},
+        {'params': model.shared_feature_head.parameters()},
+        {'params': model.shared_attention.parameters()},
         {'params': model.action_head.parameters()},
         {'params': model.severity_head.parameters()}
     ], lr=LEARNING_RATE) # Default LR for custom heads
@@ -436,7 +476,7 @@ if __name__ == "__main__":
     # Early stopping variables
     best_val_loss = float('inf')
     patience_counter = 0
-    early_stopping_patience = 4
+    early_stopping_patience = 7
 
     print("Training setup complete. Starting training loop...")
 
@@ -449,6 +489,12 @@ if __name__ == "__main__":
     for epoch in range(EPOCHS):
         model.train() # Set model to training mode
         running_loss = 0.0
+        
+        # Get mixup parameters from smart rebalancer if enabled
+        use_mixup = False
+        mixup_alpha = 0.2
+        if USE_SMART_REBALANCING and rebalancer is not None:
+            use_mixup, mixup_alpha = get_mixup_params_from_rebalancer(rebalancer, epoch)
         
         # Add tqdm for progress bar
         tqdm_dataloader = tqdm(train_dataloader, desc=f"Epoch {epoch+1} Training")
@@ -467,14 +513,29 @@ if __name__ == "__main__":
             action_labels = torch.argmax(action_labels, dim=1).to(DEVICE)
             severity_labels = torch.argmax(severity_labels, dim=1).to(DEVICE)
 
-            # Forward pass with automatic mixed precision
-            with torch.amp.autocast(device_type='cuda'):
-                action_logits, severity_logits = model(videos)
+            # Apply mixup if recommended by smart rebalancer
+            if use_mixup and mixup_alpha > 0:
+                mixed_videos, action_labels_a, action_labels_b, severity_labels_a, severity_labels_b, lam = mixup_data(
+                    videos, action_labels, severity_labels, mixup_alpha
+                )
+                
+                # Forward pass with automatic mixed precision
+                with torch.amp.autocast(device_type='cuda'):
+                    action_logits, severity_logits = model(mixed_videos)
 
-                # Calculate loss
-                loss_action = criterion_action(action_logits, action_labels)
-                loss_severity = criterion_severity(severity_logits, severity_labels)
-                total_loss = loss_action + loss_severity # Combine losses
+                    # Calculate mixup loss
+                    loss_action = mixup_criterion(criterion_action, action_logits, action_labels_a, action_labels_b, lam)
+                    loss_severity = mixup_criterion(criterion_severity, severity_logits, severity_labels_a, severity_labels_b, lam)
+                    total_loss = loss_action + loss_severity # Combine losses
+            else:
+                # Standard forward pass with automatic mixed precision
+                with torch.amp.autocast(device_type='cuda'):
+                    action_logits, severity_logits = model(videos)
+
+                    # Calculate loss
+                    loss_action = criterion_action(action_logits, action_labels)
+                    loss_severity = criterion_severity(severity_logits, severity_labels)
+                    total_loss = loss_action + loss_severity # Combine losses
 
             # Normalize loss to account for accumulation
             total_loss = total_loss / ACCUMULATION_STEPS
@@ -565,6 +626,71 @@ if __name__ == "__main__":
                 print(f"\nSeverity Classification Metrics:")
                 print(f"  Accuracy: {severity_accuracy:.4f}")
                 print(f"  Macro Recall: {severity_recall:.4f}")
+                print(f"  Macro F1-score: {severity_f1:.4f}")
+
+                # Per-class severity metrics to monitor overfitting
+                severity_precision_per_class, severity_recall_per_class, severity_f1_per_class, _ = precision_recall_fscore_support(all_severity_labels, all_predicted_severities, average=None, zero_division=0)
+                severity_classes = ["No Offence", "Offence + No Card", "Offence + Yellow Card", "Offence + Red Card"]
+                print("  Per-class Severity Recall:")
+                for i, (cls, recall) in enumerate(zip(severity_classes, severity_recall_per_class)):
+                    print(f"    {cls}: {recall:.3f}")
+                
+                combined_macro_recall = (action_recall + severity_recall) / 2
+                combined_macro_f1 = (action_f1 + severity_f1) / 2
+                print(f"Combined Macro Recall: {combined_macro_recall:.4f}")
+                print(f"Combined Macro F1-score: {combined_macro_f1:.4f}")
+
+                current_batches_processed_val = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
+                avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
+                print(f"Validation Loss: {avg_val_loss:.4f}")
+
+                # Smart Rebalancing System integration
+                if USE_SMART_REBALANCING and rebalancer is not None:
+                    # Extract performance metrics for rebalancer
+                    action_metrics = extract_performance_metrics(
+                        all_action_labels, all_predicted_actions, 
+                        avg_val_loss, 'action', ACTION_CLASS_NAMES
+                    )
+                    severity_metrics = extract_performance_metrics(
+                        all_severity_labels, all_predicted_severities, 
+                        avg_val_loss, 'severity', SEVERITY_CLASS_NAMES
+                    )
+                    
+                    # Update rebalancer with current performance
+                    rebalancer.update_performance(epoch + 1, action_metrics, severity_metrics)
+                    
+                    # Log rebalancing status
+                    log_rebalancing_status(rebalancer, epoch + 1)
+                    
+                    # Update loss functions based on rebalancer recommendations if using focal loss
+                    if USE_FOCAL_LOSS:
+                        criterion_action = update_focal_loss_from_rebalancer(
+                            rebalancer, 'action', DEVICE, FocalLoss
+                        )
+                        criterion_severity = update_focal_loss_from_rebalancer(
+                            rebalancer, 'severity', DEVICE, FocalLoss
+                        )
+                        print("Updated loss functions based on rebalancer recommendations")
+
+                # Step the learning rate scheduler with validation loss
+                scheduler.step(avg_val_loss)
+                
+                # Early stopping logic
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                    # Save best model
+                    best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model.pth")
+                    torch.save(model.state_dict(), best_model_path)
+                    print(f"New best model saved with validation loss: {avg_val_loss:.4f}")
+                else:
+                    patience_counter += 1
+                    print(f"No improvement in validation loss. Patience: {patience_counter}/{early_stopping_patience}")
+
+                # Check for early stopping
+                if patience_counter >= early_stopping_patience:
+                    print(f"Early stopping triggered after {epoch + 1} epochs")
+                    break
                 print(f"  Macro F1-score: {severity_f1:.4f}")
 
                 # Per-class severity metrics to monitor overfitting

@@ -7,3 +7,6 @@ __pycache__
 *.so
 models/
 data_distribution.txt
+.kiro\
+.kiro/
+.kiro

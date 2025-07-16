@@ -75,25 +75,16 @@ class MVFoulsModel(nn.Module):
         # Remove the original classification head as we're replacing it.
         self.model.head = nn.Identity()
 
-        # Define separate feature extractors for action and severity
+        # Define shared feature extractor for both tasks
         hidden_dim = 512
         
-        # Action-specific feature processing
-        self.action_feature_head = nn.Sequential(
+        # Shared feature processing for both action and severity
+        self.shared_feature_head = nn.Sequential(
             nn.Linear(in_features, hidden_dim),
             nn.GELU(),
             nn.Linear(hidden_dim, hidden_dim), 
             nn.GELU(), 
-            nn.Dropout(0.3)  # Lower dropout for action
-        )
-        
-        # Severity-specific feature processing with higher regularization
-        self.severity_feature_head = nn.Sequential(
-            nn.Linear(in_features, hidden_dim),
-            nn.GELU(),
-            nn.Linear(hidden_dim, hidden_dim), 
-            nn.GELU(), 
-            nn.Dropout(0.5)  # Higher dropout for severity to prevent overfitting
+            nn.Dropout(0.4)  # Balanced dropout for shared features
         )
 
         # Initialize single shared attention module for both tasks
@@ -140,13 +131,12 @@ class MVFoulsModel(nn.Module):
         action_batch_features = torch.stack(action_aggregated_features_batch, dim=0)
         severity_batch_features = torch.stack(severity_aggregated_features_batch, dim=0)
 
-        # Apply task-specific feature heads
-        action_features = self.action_feature_head(action_batch_features)
-        severity_features = self.severity_feature_head(severity_batch_features)
+        # Apply shared feature head for both tasks
+        shared_features = self.shared_feature_head(action_batch_features)
 
         # Apply classification heads
-        action_logits = self.action_head(action_features)
-        severity_logits = self.severity_head(severity_features)
+        action_logits = self.action_head(shared_features)
+        severity_logits = self.severity_head(shared_features)
 
         return action_logits, severity_logits
         
@@ -163,14 +153,15 @@ if __name__ == "__main__":
         exit()
         
     print("\nParameter counts for new heads:")
-    action_feature_head_params = sum(p.numel() for p in model.action_feature_head.parameters() if p.requires_grad)
-    print(f"Action feature head parameters: {action_feature_head_params}")
-    severity_feature_head_params = sum(p.numel() for p in model.severity_feature_head.parameters() if p.requires_grad)
-    print(f"Severity feature head parameters: {severity_feature_head_params}")
+    shared_feature_head_params = sum(p.numel() for p in model.shared_feature_head.parameters() if p.requires_grad)
+    print(f"Shared feature head parameters: {shared_feature_head_params}")
     action_head_params = sum(p.numel() for p in model.action_head.parameters() if p.requires_grad)
     print(f"Action head parameters: {action_head_params}")
     severity_head_params = sum(p.numel() for p in model.severity_head.parameters() if p.requires_grad)
     print(f"Severity head parameters: {severity_head_params}")
+    
+    total_head_params = shared_feature_head_params + action_head_params + severity_head_params
+    print(f"Total head parameters: {total_head_params}")
 
     # --- Test MultiClipAttention independently ---
     print("\nTesting MultiClipAttention independently...")
