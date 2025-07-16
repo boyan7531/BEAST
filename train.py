@@ -190,26 +190,35 @@ if __name__ == "__main__":
         class_counts = Counter(all_labels_indices)
         total_samples = len(all_labels_indices)
         
-        # Calculate class frequencies
+        # Calculate class frequencies and print for debugging
         class_frequencies = np.array([class_counts.get(i, 0) / total_samples for i in range(num_classes)])
+        print(f"Class frequencies: {class_frequencies}")
         
         weights = torch.zeros(num_classes)
         for i in range(num_classes):
             freq = class_frequencies[i]
             if freq > 0:
-                # Distribution-aware weighting strategy
-                if freq > 0.3:  # Majority classes (>30% of data)
-                    # Conservative weights for majority classes: 0.9x to 1.1x
-                    weights[i] = max(0.9, min(1.1, 1.0 / (freq ** 0.3)))
-                elif freq > 0.05:  # Medium classes (5-30% of data)
-                    # Moderate weights for medium classes: 1.0x to 1.8x
-                    weights[i] = min(1.8, 1.0 / (freq ** 0.5))
-                else:  # Minority classes (<5% of data)
-                    # Controlled weights for minorities: 1.5x to 2.2x (not 3.0x)
-                    weights[i] = min(2.2, max(1.5, 1.0 / (freq ** 0.6)))
+                # Smooth inverse frequency weighting with controlled scaling
+                # Use a continuous function instead of hard thresholds
+                if freq > 0.4:  # Very dominant classes (>40%)
+                    # Minimal rebalancing for very dominant classes
+                    weights[i] = max(0.9, 1.0 / (freq ** 0.2))
+                elif freq > 0.25:  # Major classes (25-40%)
+                    # Light rebalancing for major classes  
+                    weights[i] = max(1.0, min(1.3, 1.0 / (freq ** 0.4)))
+                elif freq > 0.1:  # Medium classes (10-25%)
+                    # Moderate rebalancing for medium classes
+                    weights[i] = min(1.6, 1.0 / (freq ** 0.5))
+                elif freq > 0.03:  # Small classes (3-10%)
+                    # Stronger rebalancing for small classes
+                    weights[i] = min(2.0, 1.0 / (freq ** 0.6))
+                else:  # Very small classes (<3%)
+                    # Controlled strong rebalancing for very small classes
+                    weights[i] = min(2.5, max(1.8, 1.0 / (freq ** 0.7)))
             else:
                 weights[i] = 1.0  # Default weight for missing classes
         
+        print(f"Calculated weights: {weights}")
         return weights.to(DEVICE) # Move weights to the same device as the model
 
     # 2. Prepare Datasets and DataLoaders
