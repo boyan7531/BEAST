@@ -485,7 +485,7 @@ if __name__ == "__main__":
     # Early stopping variables
     best_val_loss = float('inf')
     patience_counter = 0
-    early_stopping_patience = 7
+    early_stopping_patience = 11
 
     print("Training setup complete. Starting training loop...")
 

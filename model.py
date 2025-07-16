@@ -113,8 +113,7 @@ class MVFoulsModel(nn.Module):
         # x_list is now a list of tensors, where each tensor corresponds to an action event
         # Each tensor in x_list has shape: (num_clips_for_action_i, C, T, H, W)
         
-        action_aggregated_features_batch = []
-        severity_aggregated_features_batch = []
+        aggregated_features_batch = []
         
         for x_clips_for_action in x_list:
             # Pass all clips for a single action through the MViT backbone
@@ -124,15 +123,13 @@ class MVFoulsModel(nn.Module):
             # Apply shared attention module for both tasks
             shared_aggregated_feature = self.shared_attention(clip_features) # (embed_dim)
             
-            action_aggregated_features_batch.append(shared_aggregated_feature)
-            severity_aggregated_features_batch.append(shared_aggregated_feature)
+            aggregated_features_batch.append(shared_aggregated_feature)
         
-        # Stack the aggregated features to form batches for each task
-        action_batch_features = torch.stack(action_aggregated_features_batch, dim=0)
-        severity_batch_features = torch.stack(severity_aggregated_features_batch, dim=0)
+        # Stack the aggregated features to form batch
+        batch_features = torch.stack(aggregated_features_batch, dim=0)
 
         # Apply shared feature head for both tasks
-        shared_features = self.shared_feature_head(action_batch_features)
+        shared_features = self.shared_feature_head(batch_features)
 
         # Apply classification heads
         action_logits = self.action_head(shared_features)
