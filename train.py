@@ -297,8 +297,8 @@ if __name__ == "__main__":
     DATA_FOLDER = "mvfouls"
     TRAIN_SPLIT = "train"
     VAL_SPLIT = "valid"
-    START_FRAME = 67
-    END_FRAME = 82
+    START_FRAME = 63
+    END_FRAME = 86
 
     # Determine the model input size dynamically from the MViT model weights
     # MViT_V2_S_Weights.KINETICS400_V1.transforms()._size is the expected input size
