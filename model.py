@@ -96,9 +96,8 @@ class MVFoulsModel(nn.Module):
             nn.Dropout(0.5)  # Higher dropout for severity to prevent overfitting
         )
 
-        # Initialize separate attention modules for each task
-        self.action_attention = MultiClipAttention(in_features, num_heads=8)
-        self.severity_attention = MultiClipAttention(in_features, num_heads=8)
+        # Initialize single shared attention module for both tasks
+        self.shared_attention = MultiClipAttention(in_features, num_heads=8)
 
         # Define task-specific classification heads
         self.action_head = nn.Sequential(
@@ -131,12 +130,11 @@ class MVFoulsModel(nn.Module):
             # x_clips_for_action shape: (num_clips_for_action, C, T, H, W)
             clip_features = self.model(x_clips_for_action) # (num_clips_for_action, in_features)
 
-            # Apply separate attention modules for each task
-            action_aggregated_feature = self.action_attention(clip_features) # (embed_dim)
-            severity_aggregated_feature = self.severity_attention(clip_features) # (embed_dim)
+            # Apply shared attention module for both tasks
+            shared_aggregated_feature = self.shared_attention(clip_features) # (embed_dim)
             
-            action_aggregated_features_batch.append(action_aggregated_feature)
-            severity_aggregated_features_batch.append(severity_aggregated_feature)
+            action_aggregated_features_batch.append(shared_aggregated_feature)
+            severity_aggregated_features_batch.append(shared_aggregated_feature)
         
         # Stack the aggregated features to form batches for each task
         action_batch_features = torch.stack(action_aggregated_features_batch, dim=0)
