@@ -13,9 +13,9 @@ def get_train_transforms(model_input_size):
         lambda x: x.permute(0, 3, 1, 2), # From (T, H, W, C) to (T, C, H, W)
         
         # These transforms now operate on (T, C, H, W) tensor (or PIL image if input)
-        transforms.RandomResizedCrop(model_input_size, scale=(0.8, 1.0)),
-        transforms.RandomHorizontalFlip(p=0.5),
-        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
+        transforms.RandomResizedCrop(model_input_size, scale=(0.9, 1.0)),  # Less aggressive cropping
+        transforms.RandomHorizontalFlip(p=0.3),  # Reduced flip probability
+        transforms.ColorJitter(brightness=0.05, contrast=0.05, saturation=0.05, hue=0.02),  # Gentler color changes
         
         # Convert to float and normalize
         transforms.ConvertImageDtype(torch.float32), # Converts to float [0, 1]

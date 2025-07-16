@@ -17,29 +17,67 @@ import torch.optim.lr_scheduler # Import lr_scheduler
 from transform import get_train_transforms, get_val_transforms # Import new transform functions
 from torchvision.models.video import MViT_V2_S_Weights # Needed to get model input size
 
-# Define Focal Loss
+# Mixup function for data augmentation
+def mixup_data(x_list, y_action, y_severity, alpha=0.2):
+    """Apply mixup augmentation to video data and labels"""
+    if alpha > 0:
+        lam = np.random.beta(alpha, alpha)
+    else:
+        lam = 1
+
+    batch_size = len(x_list)
+    index = torch.randperm(batch_size)
+
+    # Mix the video data
+    mixed_x = []
+    for i in range(batch_size):
+        # For each video tensor in the batch, mix with another
+        mixed_video = lam * x_list[i] + (1 - lam) * x_list[index[i]]
+        mixed_x.append(mixed_video)
+
+    # Mix the labels
+    y_action_a, y_action_b = y_action, y_action[index]
+    y_severity_a, y_severity_b = y_severity, y_severity[index]
+    
+    return mixed_x, y_action_a, y_action_b, y_severity_a, y_severity_b, lam
+
+def mixup_criterion(criterion, pred, y_a, y_b, lam):
+    """Calculate mixup loss"""
+    return lam * criterion(pred, y_a) + (1 - lam) * criterion(pred, y_b)
+
+# Define Focal Loss with Label Smoothing
 class FocalLoss(nn.Module):
-    def __init__(self, gamma=2, reduction='mean', alpha=None, weight=None):
+    def __init__(self, gamma=2, reduction='mean', alpha=None, weight=None, label_smoothing=0.0):
         super().__init__()
         self.gamma = gamma
         self.reduction = reduction
         self.alpha = alpha  # New: per-class alpha tensor (e.g., higher for minorities)
         self.weight = weight
+        self.label_smoothing = label_smoothing
 
     def forward(self, inputs, targets):
         # inputs are logits
         # targets are class indices
-
-        # Compute log-probabilities for NLLLoss
-        logpt = F.log_softmax(inputs, dim=1)
+        num_classes = inputs.size(1)
         
-        # Compute the standard negative log likelihood loss with optional per-class weights
-        # This 'loss' here effectively contains the -alpha_t * log(pt) part if weights are provided
-        loss = F.nll_loss(logpt, targets, reduction='none', weight=self.weight)
-        
-        # Calculate pt for the modulating factor (1 - pt)^gamma
-        # pt = torch.exp(logpt) - gather pt for the true classes
-        pt = torch.exp(logpt.gather(1, targets.unsqueeze(1))).squeeze(1)
+        # Apply label smoothing if specified
+        if self.label_smoothing > 0:
+            # Create smoothed labels
+            smooth_targets = torch.zeros_like(inputs)
+            smooth_targets.fill_(self.label_smoothing / (num_classes - 1))
+            smooth_targets.scatter_(1, targets.unsqueeze(1), 1.0 - self.label_smoothing)
+            
+            # Use KL divergence for smoothed labels
+            log_probs = F.log_softmax(inputs, dim=1)
+            loss = F.kl_div(log_probs, smooth_targets, reduction='none').sum(dim=1)
+            
+            # Calculate pt for focal term
+            pt = F.softmax(inputs, dim=1).gather(1, targets.unsqueeze(1)).squeeze(1)
+        else:
+            # Standard focal loss implementation
+            logpt = F.log_softmax(inputs, dim=1)
+            loss = F.nll_loss(logpt, targets, reduction='none', weight=self.weight)
+            pt = torch.exp(logpt.gather(1, targets.unsqueeze(1))).squeeze(1)
         
         # Apply the modulating factor
         focal_term = (1 - pt) ** self.gamma
@@ -189,7 +227,7 @@ if __name__ == "__main__":
     print(f"Action class weights: {action_class_weights}")
     print(f"Severity class weights: {severity_class_weights}")
 
-    # Compute mild weighted sampling weights: 1 / sqrt(class_freq) for combined action-severity classes
+    # Compute conservative weighted sampling weights: 1 / (class_freq^0.75) for combined action-severity classes
     all_action_labels = torch.cat(train_dataset.labels_action_list, dim=0).argmax(dim=1).cpu().numpy()
     all_severity_labels = torch.cat(train_dataset.labels_severity_list, dim=0).argmax(dim=1).cpu().numpy()
     combined_labels = all_action_labels * num_severity_classes + all_severity_labels
@@ -199,11 +237,14 @@ if __name__ == "__main__":
     for i in range(num_combined_classes):
         count = class_counts.get(i, 0)
         if count > 0:
-            class_weights[i] = 1 / np.sqrt(count)
+            # Use power of 0.75 instead of 0.5 (sqrt) for more conservative rebalancing
+            class_weights[i] = 1 / (count ** 0.75)
 
-    # Normalize weights to make the max weight 1 (optional, for stability)
+    # Normalize weights and apply a cap to prevent extreme rebalancing
     if class_weights.max() > 0:
         class_weights /= class_weights.max()
+        # Cap the maximum weight to prevent over-sampling minority classes too much
+        class_weights = np.clip(class_weights, 0, 2.0)  # Max 2x oversampling (even more conservative)
 
     # Compute per-sample weights
     sample_weights = [class_weights[all_action_labels[j] * num_severity_classes + all_severity_labels[j]] for j in range(len(train_dataset))]
@@ -232,9 +273,9 @@ if __name__ == "__main__":
     if USE_FOCAL_LOSS:
         action_alpha = torch.tensor([0.9, 0.7, 1.5, 1.2, 1.2, 1.5, 1.2, 1.5], device=DEVICE)  # Milder values
         severity_alpha = torch.tensor([1.0, 0.7, 1.2, 1.5], device=DEVICE)
-        criterion_action = FocalLoss(gamma=2.0, alpha=action_alpha, weight=action_class_weights)
-        criterion_severity = FocalLoss(gamma=2.0, alpha=severity_alpha, weight=severity_class_weights)
-        print(f"Using Focal Loss with gamma=2.0, milder per-class alpha, and weights.")
+        criterion_action = FocalLoss(gamma=1.5, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.1)
+        criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.1)
+        print(f"Using Focal Loss with gamma=1.5, milder per-class alpha, weights, and label smoothing=0.1.")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -253,6 +294,11 @@ if __name__ == "__main__":
 
     # Initialize learning rate scheduler (ReduceLROnPlateau)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    
+    # Early stopping variables
+    best_val_loss = float('inf')
+    patience_counter = 0
+    early_stopping_patience = 7
 
     print("Training setup complete. Starting training loop...")
 
@@ -367,6 +413,13 @@ if __name__ == "__main__":
                 print(f"  Macro Recall: {action_recall:.4f}")
                 print(f"  Macro F1-score: {action_f1:.4f}")
 
+                # Per-class action metrics to monitor overfitting
+                action_precision_per_class, action_recall_per_class, action_f1_per_class, _ = precision_recall_fscore_support(all_action_labels, all_predicted_actions, average=None, zero_division=0)
+                action_classes = ["Tackling", "Standing tackling", "High leg", "Holding", "Pushing", "Elbowing", "Challenge", "Dive"]
+                print("  Per-class Action Recall:")
+                for i, (cls, recall) in enumerate(zip(action_classes, action_recall_per_class)):
+                    print(f"    {cls}: {recall:.3f}")
+
                 # Calculate and print metrics for severity classification
                 severity_accuracy = accuracy_score(all_severity_labels, all_predicted_severities)
                 severity_precision, severity_recall, severity_f1, _ = precision_recall_fscore_support(all_severity_labels, all_predicted_severities, average='macro', zero_division=0)
@@ -387,6 +440,22 @@ if __name__ == "__main__":
 
                 # Step the learning rate scheduler with validation loss
                 scheduler.step(avg_val_loss)
+                
+                # Early stopping logic
+                if avg_val_loss < best_val_loss:
+                    best_val_loss = avg_val_loss
+                    patience_counter = 0
+                    # Save best model
+                    best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model.pth")
+                    torch.save(model.state_dict(), best_model_path)
+                    print(f"New best model saved with validation loss: {best_val_loss:.4f}")
+                else:
+                    patience_counter += 1
+                    print(f"No improvement in validation loss. Patience: {patience_counter}/{early_stopping_patience}")
+                    
+                if patience_counter >= early_stopping_patience:
+                    print(f"Early stopping triggered after {epoch + 1} epochs")
+                    break
             else:
                 print("No samples processed in validation.")
 
