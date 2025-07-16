@@ -180,31 +180,35 @@ if __name__ == "__main__":
     # Initialize GradScaler for Mixed Precision Training
     scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
 
-    # Helper function to calculate CONSERVATIVE class weights for loss functions
-    def calculate_class_weights(labels_list, num_classes):
+    # Helper function to calculate DISTRIBUTION-AWARE class weights
+    def calculate_class_weights(labels_list, num_classes, epoch=0):
         # labels_list is a list of one-hot encoded tensors like [tensor([0, 1, 0]), tensor([1, 0, 0])] for a batch
         # First, concatenate all labels and convert one-hot to class indices
         all_labels_indices = torch.cat(labels_list, dim=0).argmax(dim=1).cpu().numpy()
         
         # Count occurrences of each class
         class_counts = Counter(all_labels_indices)
-        
-        # Calculate CONSERVATIVE weights using sqrt of inverse frequency
         total_samples = len(all_labels_indices)
+        
+        # Calculate class frequencies
+        class_frequencies = np.array([class_counts.get(i, 0) / total_samples for i in range(num_classes)])
+        
         weights = torch.zeros(num_classes)
         for i in range(num_classes):
-            if class_counts[i] > 0:
-                # Use sqrt of inverse frequency for more conservative weighting
-                raw_weight = total_samples / class_counts[i]
-                weights[i] = np.sqrt(raw_weight)
+            freq = class_frequencies[i]
+            if freq > 0:
+                # Distribution-aware weighting strategy
+                if freq > 0.3:  # Majority classes (>30% of data)
+                    # Conservative weights for majority classes: 0.9x to 1.1x
+                    weights[i] = max(0.9, min(1.1, 1.0 / (freq ** 0.3)))
+                elif freq > 0.05:  # Medium classes (5-30% of data)
+                    # Moderate weights for medium classes: 1.0x to 1.8x
+                    weights[i] = min(1.8, 1.0 / (freq ** 0.5))
+                else:  # Minority classes (<5% of data)
+                    # Controlled weights for minorities: 1.5x to 2.2x (not 3.0x)
+                    weights[i] = min(2.2, max(1.5, 1.0 / (freq ** 0.6)))
             else:
                 weights[i] = 1.0  # Default weight for missing classes
-        
-        # Normalize weights so the minimum weight is 1.0 and apply a cap
-        if weights.min() > 0:
-            weights = weights / weights.min()
-            # Cap maximum weight to prevent extreme rebalancing
-            weights = torch.clamp(weights, min=1.0, max=3.0)
         
         return weights.to(DEVICE) # Move weights to the same device as the model
 
@@ -222,29 +226,33 @@ if __name__ == "__main__":
     print(f"Action class weights: {action_class_weights}")
     print(f"Severity class weights: {severity_class_weights}")
 
-    # Compute conservative weighted sampling weights: 1 / (class_freq^0.75) for combined action-severity classes
+    # DISTRIBUTION-AWARE sampling strategy that respects majority classes
     all_action_labels = torch.cat(train_dataset.labels_action_list, dim=0).argmax(dim=1).cpu().numpy()
     all_severity_labels = torch.cat(train_dataset.labels_severity_list, dim=0).argmax(dim=1).cpu().numpy()
-    combined_labels = all_action_labels * num_severity_classes + all_severity_labels
-    class_counts = Counter(combined_labels)
-    num_combined_classes = num_action_classes * num_severity_classes
-    class_weights = np.zeros(num_combined_classes)
-    for i in range(num_combined_classes):
-        count = class_counts.get(i, 0)
-        if count > 0:
-            # Use power of 0.75 instead of 0.5 (sqrt) for more conservative rebalancing
-            class_weights[i] = 1 / (count ** 0.75)
+    
+    # Calculate action class frequencies for sampling adjustment
+    action_counts = Counter(all_action_labels)
+    total_samples = len(all_action_labels)
+    
+    # Create CONSERVATIVE sampling weights based on action classes only
+    sample_weights = []
+    for j in range(len(train_dataset)):
+        action_class = all_action_labels[j]
+        freq = action_counts[action_class] / total_samples
+        
+        if freq > 0.3:  # Majority classes (Standing tackling: 44.76%)
+            # Minimal adjustment for majority classes
+            weight = max(0.8, min(1.2, 1.0 / (freq ** 0.2)))
+        elif freq > 0.1:  # Medium classes (Tackling: 15.39%, Challenge: 14.49%, Holding: 11.77%)
+            # Moderate adjustment for medium classes
+            weight = min(1.5, 1.0 / (freq ** 0.4))
+        else:  # Minority classes (<10%)
+            # Controlled adjustment for minorities
+            weight = min(1.8, max(1.2, 1.0 / (freq ** 0.5)))
+        
+        sample_weights.append(weight)
 
-    # Normalize weights and apply a cap to prevent extreme rebalancing
-    if class_weights.max() > 0:
-        class_weights /= class_weights.max()
-        # Cap the maximum weight to prevent over-sampling minority classes too much
-        class_weights = np.clip(class_weights, 0, 2.0)  # Max 2x oversampling (even more conservative)
-
-    # Compute per-sample weights
-    sample_weights = [class_weights[all_action_labels[j] * num_severity_classes + all_severity_labels[j]] for j in range(len(train_dataset))]
-
-    # Create WeightedRandomSampler
+    # Create WeightedRandomSampler with conservative weights
     sampler = torch.utils.data.WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
 
     train_dataloader = DataLoader(train_dataset, batch_size=BATCH_SIZE, sampler=sampler, collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True)
@@ -266,11 +274,15 @@ if __name__ == "__main__":
     model = MVFoulsModel().to(DEVICE)
     
     if USE_FOCAL_LOSS:
-        action_alpha = torch.tensor([0.9, 0.7, 1.5, 1.2, 1.2, 1.5, 1.2, 1.5], device=DEVICE)  # Milder values
-        severity_alpha = torch.tensor([1.0, 0.7, 1.2, 1.5], device=DEVICE)
-        criterion_action = FocalLoss(gamma=1.5, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.1)
-        criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.1)
-        print(f"Using Focal Loss with gamma=1.5, milder per-class alpha, weights, and label smoothing=0.1.")
+        # Distribution-aware alpha values that complement the class weights
+        # Lower alpha for majority classes, higher for minorities (but not extreme)
+        action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 1.8, 2.0, 1.4, 2.2], device=DEVICE)  # Aligned with frequencies
+        severity_alpha = torch.tensor([1.1, 0.9, 1.3, 2.0], device=DEVICE)
+        
+        # Use different label smoothing for majority vs minority classes
+        criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
+        criterion_severity = FocalLoss(gamma=1.2, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.05)
+        print(f"Using Focal Loss with gamma=1.2, distribution-aware alpha, class weights, and conservative label smoothing=0.05.")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -293,7 +305,7 @@ if __name__ == "__main__":
     # Early stopping variables
     best_val_loss = float('inf')
     patience_counter = 0
-    early_stopping_patience = 7
+    early_stopping_patience = 4
 
     print("Training setup complete. Starting training loop...")
 
