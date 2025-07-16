@@ -180,7 +180,7 @@ if __name__ == "__main__":
     # Initialize GradScaler for Mixed Precision Training
     scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
 
-    # Helper function to calculate class weights for WeightedRandomSampler (will be adapted for Focal Loss)
+    # Helper function to calculate CONSERVATIVE class weights for loss functions
     def calculate_class_weights(labels_list, num_classes):
         # labels_list is a list of one-hot encoded tensors like [tensor([0, 1, 0]), tensor([1, 0, 0])] for a batch
         # First, concatenate all labels and convert one-hot to class indices
@@ -189,27 +189,22 @@ if __name__ == "__main__":
         # Count occurrences of each class
         class_counts = Counter(all_labels_indices)
         
-        # Calculate inverse frequency weights
+        # Calculate CONSERVATIVE weights using sqrt of inverse frequency
         total_samples = len(all_labels_indices)
         weights = torch.zeros(num_classes)
         for i in range(num_classes):
-            # Avoid division by zero for classes that might not be present by assigning a small weight
-            # or handle more gracefully. Here, setting to 0 implies no contribution from that class
-            # when used as a weight in CrossEntropyLoss/NLLLoss, which might be desired.
             if class_counts[i] > 0:
-                weights[i] = total_samples / class_counts[i]
+                # Use sqrt of inverse frequency for more conservative weighting
+                raw_weight = total_samples / class_counts[i]
+                weights[i] = np.sqrt(raw_weight)
             else:
-                # If a class is not present in the training data, its weight can be 0 or a very small number
-                # A weight of 0 will effectively ignore this class in the loss calculation.
-                # If we want to penalize misclassifications into this class, a small non-zero value might be better.
-                # For now, let's stick to 0, which is standard for missing classes in inverse frequency.
-                weights[i] = 0 
+                weights[i] = 1.0  # Default weight for missing classes
         
-        # Normalize weights if desired (e.g., to sum to 1 or max to 1). 
-        # For direct use in CrossEntropyLoss 'weight' parameter, raw inverse frequency is common.
-        # Let's normalize them to sum to num_classes for stability.
-        # if weights.sum() > 0: # Avoid division by zero if all counts are zero
-        #     weights = weights / weights.sum() * num_classes
+        # Normalize weights so the minimum weight is 1.0 and apply a cap
+        if weights.min() > 0:
+            weights = weights / weights.min()
+            # Cap maximum weight to prevent extreme rebalancing
+            weights = torch.clamp(weights, min=1.0, max=3.0)
         
         return weights.to(DEVICE) # Move weights to the same device as the model
 
@@ -293,7 +288,7 @@ if __name__ == "__main__":
     ], lr=LEARNING_RATE) # Default LR for custom heads
 
     # Initialize learning rate scheduler (ReduceLROnPlateau)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
     
     # Early stopping variables
     best_val_loss = float('inf')
