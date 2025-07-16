@@ -184,8 +184,8 @@ if __name__ == "__main__":
     print("\nTesting with real data from MVFoulsDataset...")
     test_folder = "mvfouls"  
     test_split = "train"
-    start_frame = 67
-    end_frame = 82
+    start_frame = 63
+    end_frame = 86
 
     if not os.path.exists(test_folder):
         print(f"Error: Dataset folder '{test_folder}' not found. Please ensure your dataset is downloaded and extracted.")
@@ -197,7 +197,7 @@ if __name__ == "__main__":
         from transform import get_val_transforms
         simple_transform = get_val_transforms((224, 224))
         
-        dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame, transform_model=simple_transform)
+        dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame, transform_model=simple_transform, target_fps=17)
         dataloader = DataLoader(dataset, batch_size=2, shuffle=False, collate_fn=custom_collate_fn)
         print(f"Dataset initialized with {len(dataset)} samples. DataLoader created.")
     except Exception as e:

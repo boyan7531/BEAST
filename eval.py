@@ -11,7 +11,7 @@ from sklearn.metrics import precision_recall_fscore_support, accuracy_score, con
 from transform import get_val_transforms # Import val transform
 from torchvision.models.video import MViT_V2_S_Weights # Needed to get model input size
 
-def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_frame=67, end_frame=82):
+def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_frame=63, end_frame=86):
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
 
@@ -28,7 +28,7 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
 
     # Prepare dataset and dataloader
     try:
-        test_dataset = MVFoulsDataset(data_folder, test_split, start_frame, end_frame, transform_model=get_val_transforms(MODEL_INPUT_SIZE))
+        test_dataset = MVFoulsDataset(data_folder, test_split, start_frame, end_frame, transform_model=get_val_transforms(MODEL_INPUT_SIZE), target_fps=17)
         test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False, collate_fn=custom_collate_fn) # Batch size 1 for individual predictions
         print(f"Test dataset initialized with {len(test_dataset)} samples.")
     except Exception as e:
@@ -178,9 +178,9 @@ if __name__ == "__main__":
                         help='Path to the dataset folder (e.g., "mvfouls").')
     parser.add_argument('--test_split', type=str, default='test', 
                         help='Name of the dataset split to evaluate on (e.g., "test").')
-    parser.add_argument('--start_frame', type=int, default=67, 
+    parser.add_argument('--start_frame', type=int, default=63, 
                         help='Start frame for video clips.')
-    parser.add_argument('--end_frame', type=int, default=82, 
+    parser.add_argument('--end_frame', type=int, default=86, 
                         help='End frame for video clips.')
     
     args = parser.parse_args()

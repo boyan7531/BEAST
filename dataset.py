@@ -1,17 +1,31 @@
 from torch.utils.data import Dataset
 import torch
+import numpy as np
 from decord import VideoReader, cpu
 from data_loader import load_clips, label_to_numerical
 from natsort import natsorted
 from torchvision.models.video import MViT_V2_S_Weights
 
 class MVFoulsDataset(Dataset):
-    def __init__(self, folder_path, split, start_frame, end_frame, transform=None, transform_model=None):
+    def __init__(self, folder_path, split, start_frame, end_frame, transform=None, transform_model=None, target_fps=17):
         self.start_frame = start_frame
         self.end_frame = end_frame
         self.split = split
         self.transform = transform
         self.transform_model = transform_model
+        self.target_fps = target_fps
+        
+        # Calculate self.factor as in the original paper
+        # Assuming original video fps = 25 (common for soccer videos)
+        original_fps = 25
+        duration_frames = end_frame - start_frame + 1  # +1 for inclusive range (63 to 86 = 24 frames)
+        duration_seconds = duration_frames / original_fps
+        desired_frames = duration_seconds * target_fps
+        self.factor = duration_frames / desired_frames
+        
+        print(f"Frame sampling config: start={start_frame}, end={end_frame}")
+        print(f"Duration: {duration_frames} frames, Factor: {self.factor:.4f}")
+        print(f"Target FPS: {target_fps}, Expected output frames: ~{desired_frames:.1f}")
         self.labels_action_list, self.labels_severity_list, self.useless_actions = label_to_numerical(folder_path, split)
         self.clip_paths_dict = load_clips(folder_path, split, self.useless_actions)
         self.length = len(self.labels_action_list)
@@ -42,13 +56,24 @@ class MVFoulsDataset(Dataset):
         all_clips_for_action_data = []
         for clip_path in all_clips_for_action_paths:
             vr = VideoReader(clip_path, ctx=cpu(0))
-            frame_indices = range(self.start_frame, self.end_frame + 1)  
-            video = vr.get_batch(frame_indices).asnumpy()
             
-            # Convert numpy array to torch tensor with (T, H, W, C) format first for torchvision transforms
-            video = torch.from_numpy(video)
+            # Get all frames in the range first (63 to 86 inclusive = 24 frames)
+            all_frame_indices = list(range(self.start_frame, self.end_frame + 1))  # 63 to 86 inclusive = 24 frames
+            all_frames = vr.get_batch(all_frame_indices).asnumpy()
             
-    
+            # Apply factor-based downsampling as in the original paper
+            selected_frames = []
+            for j in range(len(all_frames)):
+                if j % self.factor < 1:
+                    selected_frames.append(all_frames[j])
+            
+            # Convert to tensor
+            if selected_frames:
+                video = torch.from_numpy(np.stack(selected_frames))
+            else:
+                # Fallback: if no frames selected, take the first frame
+                video = torch.from_numpy(all_frames[:1])
+            
             video = self.transform_model(video) # Apply the passed-in transform
             
             all_clips_for_action_data.append(video)
@@ -78,11 +103,11 @@ if __name__ == "__main__":
     # Test configuration
     test_folder = "mvfouls"
     test_split = "train"
-    start_frame = 67
-    end_frame = 82
+    start_frame = 63
+    end_frame = 86
     
     # Initialize dataset
-    dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame)
+    dataset = MVFoulsDataset(test_folder, test_split, start_frame, end_frame, target_fps=17)
     
     # Test custom collate function with a small batch
     from torch.utils.data import DataLoader
