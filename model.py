@@ -82,7 +82,7 @@ class MVFoulsModel(nn.Module):
             nn.GELU(),
             nn.Linear(hidden_dim, hidden_dim), 
             nn.GELU(), 
-            nn.Dropout(0.3)
+            nn.Dropout(0.4)
         )
 
         # Initialize the MultiClipAttention module with num_heads

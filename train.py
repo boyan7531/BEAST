@@ -161,8 +161,8 @@ if __name__ == "__main__":
         # Normalize weights if desired (e.g., to sum to 1 or max to 1). 
         # For direct use in CrossEntropyLoss 'weight' parameter, raw inverse frequency is common.
         # Let's normalize them to sum to num_classes for stability.
-        if weights.sum() > 0: # Avoid division by zero if all counts are zero
-            weights = weights / weights.sum() * num_classes
+        # if weights.sum() > 0: # Avoid division by zero if all counts are zero
+        #     weights = weights / weights.sum() * num_classes
         
         return weights.to(DEVICE) # Move weights to the same device as the model
 
@@ -343,6 +343,11 @@ if __name__ == "__main__":
                 print(f"  Macro Recall: {severity_recall:.4f}")
                 print(f"  Macro F1-score: {severity_f1:.4f}")
                 
+                combined_macro_recall = (action_recall + severity_recall) / 2
+                combined_macro_f1 = (action_f1 + severity_f1) / 2
+                print(f"Combined Macro Recall: {combined_macro_recall:.4f}")
+                print(f"Combined Macro F1-score: {combined_macro_f1:.4f}")
+
                 current_batches_processed_val = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
                 avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
                 print(f"Validation Loss: {avg_val_loss:.4f}")
