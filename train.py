@@ -397,24 +397,24 @@ if __name__ == "__main__":
     print(f"Severity class distribution: {dict(severity_counts)}")
     print(f"Severity frequencies: {[(i, severity_counts[i]/total_samples) for i in range(4)]}")
     
-    # Create ULTRA-AGGRESSIVE sampling weights targeting Yellow Card and No Offence
+    # Create BALANCED sampling weights - moderate inverse frequency weighting
     sample_weights = []
     for j in range(len(train_dataset)):
         severity_class = all_severity_labels[j]
         freq = severity_counts[severity_class] / total_samples
         
-        if severity_class == 0:  # No Offence (13.11%) - MASSIVE boost
-            # Ultra-aggressive upweighting for No Offence
-            weight = min(12.0, max(6.0, 1.0 / (freq ** 1.1)))
-        elif severity_class == 1:  # Offence + No Card (56.19%) - Moderate downweight
-            # Moderate downweighting for dominant class
-            weight = max(0.6, 1.0 / (freq ** 0.4))
-        elif severity_class == 2:  # Yellow Card (29.54%) - MAJOR boost
-            # Ultra-aggressive upweighting for Yellow Card
-            weight = min(8.0, max(4.0, 1.0 / (freq ** 1.0)))
-        else:  # Red Card (1.16%) - Maximum boost
-            # Maximum upweighting for Red Card
-            weight = min(15.0, max(8.0, 1.0 / (freq ** 1.2)))
+        if severity_class == 0:  # No Offence (13.11%) - Moderate boost
+            # Moderate boost for minority class
+            weight = min(2.5, max(1.5, 1.0 / (freq ** 0.6)))
+        elif severity_class == 1:  # Offence + No Card (56.19%) - Baseline
+            # Keep dominant class at baseline
+            weight = 1.0
+        elif severity_class == 2:  # Yellow Card (29.54%) - Moderate boost
+            # Moderate boost for minority class
+            weight = min(2.0, max(1.2, 1.0 / (freq ** 0.5)))
+        else:  # Red Card (1.16%) - Strong boost
+            # Strong boost for extreme minority
+            weight = min(8.0, max(4.0, 1.0 / (freq ** 0.8)))
         
         sample_weights.append(weight)
 
