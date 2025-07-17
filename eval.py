@@ -137,8 +137,8 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
                         
                     # Sample frames with the calculated factor
                     sampled_indices = []
-                    for i in range(len(frame_indices)):
-                        original_idx = int(i * factor)
+                    for frame_idx in range(len(frame_indices)):
+                        original_idx = int(frame_idx * factor)
                         if original_idx < len(frame_indices):
                             sampled_indices.append(frame_indices[original_idx])
                     
@@ -148,12 +148,39 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
                     # Load the sampled frames
                     frames = vr.get_batch(sampled_indices).asnumpy()  # Shape: (T, H, W, C)
                     
-                    # Convert to tensor and apply transforms
+                    # Handle different frame formats
+                    if len(frames.shape) != 4:
+                        print(f"Warning: Unexpected frame shape {frames.shape} in {video_file}")
+                        continue
+                    
+                    # Convert to tensor and normalize to [0, 1]
                     frames_tensor = torch.from_numpy(frames).float()
+                    
+                    # Normalize only if values are in [0, 255] range
+                    if frames_tensor.max() > 1.0:
+                        frames_tensor = frames_tensor / 255.0
+                    
                     frames_tensor = frames_tensor.permute(3, 0, 1, 2)  # (C, T, H, W)
                     
+                    # Ensure we have exactly 3 channels (RGB)
+                    if frames_tensor.shape[0] == 1:  # Grayscale
+                        frames_tensor = frames_tensor.repeat(3, 1, 1, 1)
+                    elif frames_tensor.shape[0] == 4:  # RGBA
+                        frames_tensor = frames_tensor[:3]  # Take only RGB channels
+                    elif frames_tensor.shape[0] > 4:  # Corrupted or unusual format
+                        print(f"Warning: Too many channels ({frames_tensor.shape[0]}) in {video_file}, skipping")
+                        continue
+                    elif frames_tensor.shape[0] != 3:
+                        print(f"Warning: Unexpected number of channels ({frames_tensor.shape[0]}) in {video_file}, skipping")
+                        continue
+                    
+                    # Apply transforms (this will handle the resolution conversion to 224x224)
                     if transform:
-                        frames_tensor = transform(frames_tensor)
+                        try:
+                            frames_tensor = transform(frames_tensor)
+                        except Exception as transform_error:
+                            print(f"Transform error for {video_file}: {transform_error}")
+                            continue
                     
                     clips_tensors.append(frames_tensor)
                     
