@@ -337,19 +337,22 @@ if __name__ == "__main__":
         weights = torch.zeros(num_classes)
         
         if task_type == "severity":
-            # AGGRESSIVE rebalancing for severity classification
+            # ULTRA-TARGETED rebalancing for severity classification
             for i in range(num_classes):
                 freq = class_frequencies[i]
                 if freq > 0:
-                    if freq > 0.5:  # Dominant class (>50%) - "Offence + No Card"
-                        weights[i] = max(0.7, 1.0 / (freq ** 0.3))
-                    elif freq > 0.25:  # Major class (25-50%) - "Offence + Yellow Card"
-                        weights[i] = min(2.0, 1.0 / (freq ** 0.6))
-                    elif freq > 0.05:  # Medium class (5-25%) - "No Offence"
-                        weights[i] = min(3.5, 1.0 / (freq ** 0.8))
-                    else:  # Minority class (<5%) - "Offence + Red Card"
-                        # EXTREME rebalancing for Red Card (1.16%)
-                        weights[i] = min(10.0, max(5.0, 1.0 / (freq ** 0.9)))
+                    if i == 0:  # No Offence (13.11%) - MASSIVE boost
+                        # Ultra-aggressive weighting for No Offence
+                        weights[i] = min(8.0, max(4.5, 1.0 / (freq ** 1.0)))
+                    elif i == 1:  # Offence + No Card (56.19%) - Strong downweight
+                        # Aggressive downweighting for dominant class
+                        weights[i] = max(0.4, 1.0 / (freq ** 0.5))
+                    elif i == 2:  # Yellow Card (29.54%) - MAJOR boost
+                        # Ultra-aggressive weighting for Yellow Card
+                        weights[i] = min(6.0, max(3.5, 1.0 / (freq ** 0.9)))
+                    else:  # Red Card (1.16%) - Maximum boost
+                        # Maximum weighting for Red Card
+                        weights[i] = min(12.0, max(8.0, 1.0 / (freq ** 1.1)))
                 else:
                     weights[i] = 1.0
         else:
@@ -387,32 +390,35 @@ if __name__ == "__main__":
     print(f"Action class weights: {action_class_weights}")
     print(f"Severity class weights: {severity_class_weights}")
 
-    # SEVERITY-FOCUSED sampling strategy with stratified batching
+    # ULTRA-AGGRESSIVE SEVERITY-FOCUSED sampling strategy
     all_action_labels = torch.cat(train_dataset.labels_action_list, dim=0).argmax(dim=1).cpu().numpy()
     all_severity_labels = torch.cat(train_dataset.labels_severity_list, dim=0).argmax(dim=1).cpu().numpy()
     
-    # Calculate severity class frequencies for aggressive sampling adjustment
+    # Calculate severity class frequencies for ultra-aggressive sampling adjustment
     severity_counts = Counter(all_severity_labels)
     total_samples = len(all_severity_labels)
     
-    # Create AGGRESSIVE sampling weights based on SEVERITY classes (not action)
+    print(f"Severity class distribution: {dict(severity_counts)}")
+    print(f"Severity frequencies: {[(i, severity_counts[i]/total_samples) for i in range(4)]}")
+    
+    # Create ULTRA-AGGRESSIVE sampling weights targeting Yellow Card and No Offence
     sample_weights = []
     for j in range(len(train_dataset)):
         severity_class = all_severity_labels[j]
         freq = severity_counts[severity_class] / total_samples
         
-        if freq > 0.5:  # Dominant class (>50%) - "Offence + No Card"
-            # Strong downweighting for dominant class
-            weight = max(0.5, 1.0 / (freq ** 0.4))
-        elif freq > 0.25:  # Major class (25-50%) - "Offence + Yellow Card"
-            # Moderate adjustment for major class
-            weight = min(1.5, 1.0 / (freq ** 0.6))
-        elif freq > 0.05:  # Medium class (5-25%) - "No Offence"
-            # Strong upweighting for medium class
-            weight = min(3.0, 1.0 / (freq ** 0.8))
-        else:  # Minority class (<5%) - "Offence + Red Card"
-            # EXTREME upweighting for Red Card (1.16%)
-            weight = min(8.0, max(4.0, 1.0 / (freq ** 0.95)))
+        if severity_class == 0:  # No Offence (13.11%) - MASSIVE boost
+            # Ultra-aggressive upweighting for No Offence
+            weight = min(12.0, max(6.0, 1.0 / (freq ** 1.1)))
+        elif severity_class == 1:  # Offence + No Card (56.19%) - Strong downweight
+            # Aggressive downweighting for dominant class
+            weight = max(0.3, 1.0 / (freq ** 0.6))
+        elif severity_class == 2:  # Yellow Card (29.54%) - MAJOR boost
+            # Ultra-aggressive upweighting for Yellow Card
+            weight = min(8.0, max(4.0, 1.0 / (freq ** 1.0)))
+        else:  # Red Card (1.16%) - Maximum boost
+            # Maximum upweighting for Red Card
+            weight = min(15.0, max(8.0, 1.0 / (freq ** 1.2)))
         
         sample_weights.append(weight)
 
@@ -459,31 +465,42 @@ if __name__ == "__main__":
     print(f"Using {args.aggregation} aggregation method")
     
     if USE_FOCAL_LOSS:
-        # Distribution-aware alpha values that complement the class weights
-        # Lower alpha for majority classes, higher for minorities (but not extreme)
+        # ULTRA-TARGETED alpha values for Yellow Card and No Offence improvement
         action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 1.8, 2.0, 1.4, 2.2], device=DEVICE)  # Aligned with frequencies
-        severity_alpha = torch.tensor([2.5, 0.8, 1.8, 4.0], device=DEVICE)  # AGGRESSIVE for Red Card
+        # Severity alpha: [No Offence, Offence+No Card, Yellow Card, Red Card]
+        severity_alpha = torch.tensor([4.5, 0.6, 3.8, 5.0], device=DEVICE)  # MASSIVE boost for No Offence and Yellow Card
         
-        # Use different parameters for action vs severity
+        # Use ULTRA-AGGRESSIVE parameters targeting Yellow Card and No Offence
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
-        criterion_severity = FocalLoss(gamma=2.5, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.12)
-        print(f"Using Focal Loss with AGGRESSIVE severity settings: gamma=2.5, alpha up to 4.0 for Red Card, label_smoothing=0.12")
+        criterion_severity = FocalLoss(gamma=3.2, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
+        print(f"Using ULTRA-TARGETED Focal Loss: gamma=3.2, No Offence alpha=4.5, Yellow Card alpha=3.8, label_smoothing=0.08")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         print("Using CrossEntropyLoss with per-class weights.")
 
     
-    # Initialize optimizer with same learning rate for all parameters
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    # Initialize optimizer with TARGETED learning rates for severity-focused training
+    # Separate parameters for severity head to give it more learning capacity
+    severity_params = list(model.severity_head.parameters())
+    severity_param_ids = {id(p) for p in severity_params}
+    other_params = [p for p in model.parameters() if id(p) not in severity_param_ids]
+    
+    optimizer = optim.Adam([
+        {'params': other_params, 'lr': LEARNING_RATE},
+        {'params': severity_params, 'lr': LEARNING_RATE * 1.5}  # 50% higher LR for severity head
+    ])
+    
+    print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
 
-    # Initialize learning rate scheduler (ReduceLROnPlateau)
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
+    # Initialize learning rate scheduler (StepLR) - more predictable for imbalanced learning
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.5)
+    print(f"Using StepLR scheduler: step_size=8, gamma=0.5 (LR will be halved every 8 epochs)")
     
     # Early stopping variables
     best_val_loss = float('inf')
     patience_counter = 0
-    early_stopping_patience = 11
+    early_stopping_patience = 20
 
     print("Training setup complete. Starting training loop...")
 
@@ -539,10 +556,12 @@ if __name__ == "__main__":
                 with torch.amp.autocast(device_type='cuda'):
                     action_logits, severity_logits = model(videos)
 
-                    # Calculate loss
+                    # Calculate loss with SEVERITY-FOCUSED weighting
                     loss_action = criterion_action(action_logits, action_labels)
                     loss_severity = criterion_severity(severity_logits, severity_labels)
-                    total_loss = loss_action + loss_severity # Combine losses
+                    
+                    # Give 2x more weight to severity loss (Yellow Card and No Offence focus)
+                    total_loss = loss_action + (2.0 * loss_severity)
 
             # Normalize loss to account for accumulation
             total_loss = total_loss / ACCUMULATION_STEPS
@@ -562,6 +581,7 @@ if __name__ == "__main__":
         current_batches_processed = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
         avg_train_loss = running_loss / current_batches_processed if current_batches_processed > 0 else 0.0
         print(f"Epoch {epoch + 1} finished. Average Training Loss: {avg_train_loss:.4f}")
+        print(f"Current Learning Rate: {scheduler.get_last_lr()[0]:.6f}")
 
         # Save the model after each epoch
         model_save_path = os.path.join(MODEL_SAVE_DIR, f"model_epoch_{epoch+1}.pth")
@@ -678,26 +698,6 @@ if __name__ == "__main__":
                             rebalancer, 'severity', DEVICE, FocalLoss
                         )
                         print("Updated loss functions based on rebalancer recommendations")
-
-                # Step the learning rate scheduler with validation loss
-                scheduler.step(avg_val_loss)
-                
-                # Early stopping logic
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                    patience_counter = 0
-                    # Save best model
-                    best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model.pth")
-                    torch.save(model.state_dict(), best_model_path)
-                    print(f"New best model saved with validation loss: {avg_val_loss:.4f}")
-                else:
-                    patience_counter += 1
-                    print(f"No improvement in validation loss. Patience: {patience_counter}/{early_stopping_patience}")
-
-                # Check for early stopping
-                if patience_counter >= early_stopping_patience:
-                    print(f"Early stopping triggered after {epoch + 1} epochs")
-                    break
                 print(f"  Macro F1-score: {severity_f1:.4f}")
 
                 # Per-class severity metrics to monitor overfitting
@@ -716,8 +716,8 @@ if __name__ == "__main__":
                 avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
                 print(f"Validation Loss: {avg_val_loss:.4f}")
 
-                # Step the learning rate scheduler with validation loss
-                scheduler.step(avg_val_loss)
+                # Step the learning rate scheduler
+                scheduler.step()
                 
                 # Early stopping logic
                 if avg_val_loss < best_val_loss:
