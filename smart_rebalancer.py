@@ -178,19 +178,21 @@ class SmartRebalancer:
             else:
                 self.current_action_weights[i] = 1.0
         
-        # Severity weights (more aggressive)
+        # Severity weights (more balanced approach)
         severity_freqs = self.class_distributions['severity']['frequencies']
         for i in range(self.num_severity_classes):
             freq = severity_freqs[i]
             if freq > 0:
-                if freq > 0.5:  # Dominant class
-                    self.current_severity_weights[i] = max(0.7, 1.0 / (freq ** 0.3))
-                elif freq > 0.25:  # Major class
-                    self.current_severity_weights[i] = min(2.0, 1.0 / (freq ** 0.6))
-                elif freq > 0.05:  # Medium class
-                    self.current_severity_weights[i] = min(3.5, 1.0 / (freq ** 0.8))
-                else:  # Minority class (Red Card)
-                    self.current_severity_weights[i] = min(10.0, max(5.0, 1.0 / (freq ** 0.9)))
+                if freq > 0.5:  # Dominant class (Offence + No Card: 56.19%)
+                    # Keep this close to 1.0 since it's the most important class
+                    self.current_severity_weights[i] = max(0.9, min(1.2, 1.0 / (freq ** 0.1)))
+                elif freq > 0.25:  # Major class (Yellow Card: 29.54%)
+                    self.current_severity_weights[i] = min(1.8, 1.0 / (freq ** 0.4))
+                elif freq > 0.05:  # Medium class (No Offence: 13.11%)
+                    # Reduce the weight for No Offence to prevent over-prediction
+                    self.current_severity_weights[i] = min(2.5, 1.0 / (freq ** 0.6))
+                else:  # Minority class (Red Card: 1.16%)
+                    self.current_severity_weights[i] = min(8.0, max(4.0, 1.0 / (freq ** 0.8)))
             else:
                 self.current_severity_weights[i] = 1.0
     
