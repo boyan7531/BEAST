@@ -13,6 +13,7 @@ from torchvision.models.video import MViT_V2_S_Weights # Needed to get model inp
 import glob
 from natsort import natsorted
 from decord import VideoReader, cpu
+import numpy as np
 
 def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challenge", start_frame=63, end_frame=86):
     """
@@ -125,62 +126,45 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
                     vr = VideoReader(video_file, ctx=cpu(0))
                     total_frames = len(vr)
                     
-                    # Calculate frame indices to sample
+                    # Get all frames in the range first (same as dataset class)
+                    all_frame_indices = list(range(start_frame, end_frame + 1))  # 63 to 86 inclusive = 24 frames
+                    
+                    # Handle videos shorter than expected
                     if end_frame >= total_frames:
-                        # If video is shorter than expected, take all available frames
-                        frame_indices = list(range(min(start_frame, total_frames-1), total_frames))
+                        all_frame_indices = list(range(min(start_frame, total_frames-1), total_frames))
+                    
+                    if not all_frame_indices:
+                        continue
+                    
+                    # Load all frames in the range
+                    all_frames = vr.get_batch(all_frame_indices).asnumpy()  # Shape: (T, H, W, C)
+                    
+                    # Apply factor-based downsampling as in the original paper (same as dataset class)
+                    selected_frames = []
+                    for j in range(len(all_frames)):
+                        if j % factor < 1:
+                            selected_frames.append(all_frames[j])
+                    
+                    # Fallback: if no frames selected, take the first frame
+                    if not selected_frames:
+                        selected_frames = [all_frames[0]]
+                    
+                    # Convert to tensor (exactly same as dataset class)
+                    if selected_frames:
+                        video = torch.from_numpy(np.stack(selected_frames))
                     else:
-                        frame_indices = list(range(start_frame, end_frame + 1))
+                        # This shouldn't happen due to our fallback above, but just in case
+                        video = torch.from_numpy(all_frames[:1])
                     
-                    if not frame_indices:
-                        continue
-                        
-                    # Sample frames with the calculated factor
-                    sampled_indices = []
-                    for frame_idx in range(len(frame_indices)):
-                        original_idx = int(frame_idx * factor)
-                        if original_idx < len(frame_indices):
-                            sampled_indices.append(frame_indices[original_idx])
-                    
-                    if not sampled_indices:
-                        sampled_indices = [frame_indices[0]]  # At least take one frame
-                    
-                    # Load the sampled frames
-                    frames = vr.get_batch(sampled_indices).asnumpy()  # Shape: (T, H, W, C)
-                    
-                    # Handle different frame formats
-                    if len(frames.shape) != 4:
-                        print(f"Warning: Unexpected frame shape {frames.shape} in {video_file}")
-                        continue
-                    
-                    # Convert to tensor - keep in (T, H, W, C) format for transforms
-                    frames_tensor = torch.from_numpy(frames).float()
-                    
-                    # Normalize only if values are in [0, 255] range
-                    if frames_tensor.max() > 1.0:
-                        frames_tensor = frames_tensor / 255.0
-                    
-                    # Ensure we have exactly 3 channels (RGB) - work with (T, H, W, C) format
-                    if frames_tensor.shape[3] == 1:  # Grayscale
-                        frames_tensor = frames_tensor.repeat(1, 1, 1, 3)
-                    elif frames_tensor.shape[3] == 4:  # RGBA
-                        frames_tensor = frames_tensor[:, :, :, :3]  # Take only RGB channels
-                    elif frames_tensor.shape[3] > 4:  # Corrupted or unusual format
-                        print(f"Warning: Too many channels ({frames_tensor.shape[3]}) in {video_file}, skipping")
-                        continue
-                    elif frames_tensor.shape[3] != 3:
-                        print(f"Warning: Unexpected number of channels ({frames_tensor.shape[3]}) in {video_file}, skipping")
-                        continue
-                    
-                    # Apply transforms (this will handle the resolution conversion to 224x224)
+                    # Apply transforms (same as dataset class)
                     if transform:
                         try:
-                            frames_tensor = transform(frames_tensor)
+                            video = transform(video)  # This handles all preprocessing
                         except Exception as transform_error:
                             print(f"Transform error for {video_file}: {transform_error}")
                             continue
                     
-                    clips_tensors.append(frames_tensor)
+                    clips_tensors.append(video)
                     
                 except Exception as e:
                     print(f"Error processing {video_file}: {e}")
