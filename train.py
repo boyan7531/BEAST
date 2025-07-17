@@ -307,7 +307,7 @@ if __name__ == "__main__":
     # Determine the model input size dynamically from the MViT model weights
     # MViT_V2_S_Weights.KINETICS400_V1.transforms()._size is the expected input size
     # weights = MViT_V2_S_Weights.KINETICS400_V1 # Removed as _size attribute is not directly available
-    MODEL_INPUT_SIZE = (224, 224) # MViT models typically use 224x224 input resolution
+    MODEL_INPUT_SIZE = (224, 224) # Official MViT input size (after resize→crop pipeline)
 
     # For Windows, num_workers must be 0 for DataLoader to avoid multiprocessing issues
     if os.name == 'nt':

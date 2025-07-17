@@ -15,7 +15,7 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {DEVICE}")
 
-    MODEL_INPUT_SIZE = (224, 224) # MViT models typically use 224x224 input resolution
+    MODEL_INPUT_SIZE = (224, 224) # Official MViT input size after preprocessing
 
     # Load the model
     model = MVFoulsModel().to(DEVICE)
