@@ -255,6 +255,10 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--accumulation_steps', type=int, default=4, help='Number of batches to accumulate gradients over')
     
+    # Aggregation method argument
+    parser.add_argument('--aggregation', type=str, default='attention', choices=['max', 'mean', 'attention'], 
+                        help='Aggregation method for multi-view clips: max, mean, or attention')
+    
     # Smart Rebalancing System arguments
     parser.add_argument('--use_smart_rebalancing', action='store_true', help='Enable smart rebalancing system')
     parser.add_argument('--min_class_recall', type=float, default=0.3, help='Minimum acceptable recall per class')
@@ -451,7 +455,8 @@ if __name__ == "__main__":
         print("Smart Rebalancing System initialized successfully!")
 
     # 3. Initialize Model, Loss Functions, and Optimizer
-    model = MVFoulsModel().to(DEVICE)
+    model = MVFoulsModel(aggregation=args.aggregation).to(DEVICE)
+    print(f"Using {args.aggregation} aggregation method")
     
     if USE_FOCAL_LOSS:
         # Distribution-aware alpha values that complement the class weights

@@ -63,7 +63,7 @@ class MultiClipAttention(nn.Module):
         return aggregated_features
 
 class MVFoulsModel(nn.Module):
-    def __init__(self):
+    def __init__(self, aggregation='attention'):
         super().__init__()
         weights = MViT_V2_S_Weights.KINETICS400_V1
         self.model = mvit_v2_s(weights=weights, progress=True)
@@ -74,6 +74,9 @@ class MVFoulsModel(nn.Module):
 
         # Remove the original classification head as we're replacing it.
         self.model.head = nn.Identity()
+
+        # Store aggregation method
+        self.aggregation = aggregation
 
         # Define shared feature extractor for both tasks
         hidden_dim = 512
@@ -87,26 +90,22 @@ class MVFoulsModel(nn.Module):
             nn.Dropout(0.4)  # Balanced dropout for shared features
         )
 
-        # Initialize single shared attention module for both tasks
-        self.shared_attention = MultiClipAttention(in_features, num_heads=8)
+        # Initialize attention module only if needed
+        if self.aggregation == 'attention':
+            self.shared_attention = MultiClipAttention(in_features, num_heads=8)
 
-        # Define task-specific classification heads
+        # Simple classification heads
         self.action_head = nn.Sequential(
+            nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(0.2),
             nn.Linear(hidden_dim, 8)  # 8 classes for action
         )
         
-        # More complex severity head to handle extreme imbalance
+        # Simple severity head
         self.severity_head = nn.Sequential(
+            nn.LayerNorm(hidden_dim),
             nn.Linear(hidden_dim, hidden_dim),
-            nn.GELU(),
-            nn.Dropout(0.4),
-            nn.Linear(hidden_dim, hidden_dim // 2),
-            nn.GELU(),
-            nn.Dropout(0.3),
-            nn.Linear(hidden_dim // 2, 4)  # 4 classes for severity
+            nn.Linear(hidden_dim, 4)  # 4 classes for severity
         )
 
     def forward(self, x_list):
@@ -120,8 +119,15 @@ class MVFoulsModel(nn.Module):
             # x_clips_for_action shape: (num_clips_for_action, C, T, H, W)
             clip_features = self.model(x_clips_for_action) # (num_clips_for_action, in_features)
 
-            # Apply shared attention module for both tasks
-            shared_aggregated_feature = self.shared_attention(clip_features) # (embed_dim)
+            # Apply aggregation based on the chosen method
+            if self.aggregation == 'attention':
+                shared_aggregated_feature = self.shared_attention(clip_features) # (embed_dim)
+            elif self.aggregation == 'max':
+                shared_aggregated_feature = torch.max(clip_features, dim=0)[0] # (embed_dim)
+            elif self.aggregation == 'mean':
+                shared_aggregated_feature = torch.mean(clip_features, dim=0) # (embed_dim)
+            else:
+                raise ValueError(f"Unknown aggregation method: {self.aggregation}")
             
             aggregated_features_batch.append(shared_aggregated_feature)
         
