@@ -464,7 +464,7 @@ if __name__ == "__main__":
         # BALANCED alpha values for stable training
         action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 1.8, 2.0, 1.4, 2.2], device=DEVICE)  # Aligned with frequencies
         # Severity alpha: [No Offence, Offence+No Card, Yellow Card, Red Card]
-        severity_alpha = torch.tensor([3.5, 0.8, 3.0, 4.5], device=DEVICE)  # Balanced boost for minorities
+        severity_alpha = torch.tensor([2.0, 1.5, 2.5, 3.5], device=DEVICE)  # Boost Offence+No Card, reduce No Offence bias
         
         # Use BALANCED parameters for stable training
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
