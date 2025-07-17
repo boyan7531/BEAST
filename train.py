@@ -344,9 +344,9 @@ if __name__ == "__main__":
                     if i == 0:  # No Offence (13.11%) - MASSIVE boost
                         # Ultra-aggressive weighting for No Offence
                         weights[i] = min(8.0, max(4.5, 1.0 / (freq ** 1.0)))
-                    elif i == 1:  # Offence + No Card (56.19%) - Strong downweight
-                        # Aggressive downweighting for dominant class
-                        weights[i] = max(0.4, 1.0 / (freq ** 0.5))
+                    elif i == 1:  # Offence + No Card (56.19%) - Moderate downweight
+                        # Moderate downweighting for dominant class
+                        weights[i] = max(0.7, 1.0 / (freq ** 0.3))
                     elif i == 2:  # Yellow Card (29.54%) - MAJOR boost
                         # Ultra-aggressive weighting for Yellow Card
                         weights[i] = min(6.0, max(3.5, 1.0 / (freq ** 0.9)))
@@ -410,9 +410,9 @@ if __name__ == "__main__":
         if severity_class == 0:  # No Offence (13.11%) - MASSIVE boost
             # Ultra-aggressive upweighting for No Offence
             weight = min(12.0, max(6.0, 1.0 / (freq ** 1.1)))
-        elif severity_class == 1:  # Offence + No Card (56.19%) - Strong downweight
-            # Aggressive downweighting for dominant class
-            weight = max(0.3, 1.0 / (freq ** 0.6))
+        elif severity_class == 1:  # Offence + No Card (56.19%) - Moderate downweight
+            # Moderate downweighting for dominant class
+            weight = max(0.6, 1.0 / (freq ** 0.4))
         elif severity_class == 2:  # Yellow Card (29.54%) - MAJOR boost
             # Ultra-aggressive upweighting for Yellow Card
             weight = min(8.0, max(4.0, 1.0 / (freq ** 1.0)))
@@ -465,15 +465,15 @@ if __name__ == "__main__":
     print(f"Using {args.aggregation} aggregation method")
     
     if USE_FOCAL_LOSS:
-        # ULTRA-TARGETED alpha values for Yellow Card and No Offence improvement
+        # BALANCED alpha values for stable training
         action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 1.8, 2.0, 1.4, 2.2], device=DEVICE)  # Aligned with frequencies
         # Severity alpha: [No Offence, Offence+No Card, Yellow Card, Red Card]
-        severity_alpha = torch.tensor([4.5, 0.6, 3.8, 5.0], device=DEVICE)  # MASSIVE boost for No Offence and Yellow Card
+        severity_alpha = torch.tensor([3.5, 0.8, 3.0, 4.5], device=DEVICE)  # Balanced boost for minorities
         
-        # Use ULTRA-AGGRESSIVE parameters targeting Yellow Card and No Offence
+        # Use BALANCED parameters for stable training
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
-        criterion_severity = FocalLoss(gamma=3.2, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-        print(f"Using ULTRA-TARGETED Focal Loss: gamma=3.2, No Offence alpha=4.5, Yellow Card alpha=3.8, label_smoothing=0.08")
+        criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
+        print(f"Using BALANCED Focal Loss: gamma=2.8, No Offence alpha=3.5, Yellow Card alpha=3.0, Offence+No Card alpha=0.8")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -556,12 +556,12 @@ if __name__ == "__main__":
                 with torch.amp.autocast(device_type='cuda'):
                     action_logits, severity_logits = model(videos)
 
-                    # Calculate loss with SEVERITY-FOCUSED weighting
+                    # Calculate loss with BALANCED weighting
                     loss_action = criterion_action(action_logits, action_labels)
                     loss_severity = criterion_severity(severity_logits, severity_labels)
                     
-                    # Give 2x more weight to severity loss (Yellow Card and No Offence focus)
-                    total_loss = loss_action + (2.0 * loss_severity)
+                    # Give 1.5x more weight to severity loss (balanced focus)
+                    total_loss = loss_action + (1.5 * loss_severity)
 
             # Normalize loss to account for accumulation
             total_loss = total_loss / ACCUMULATION_STEPS
