@@ -337,22 +337,18 @@ if __name__ == "__main__":
         weights = torch.zeros(num_classes)
         
         if task_type == "severity":
-            # ULTRA-TARGETED rebalancing for severity classification
+            # CONSERVATIVE rebalancing for severity classification (same as action)
             for i in range(num_classes):
                 freq = class_frequencies[i]
                 if freq > 0:
-                    if i == 0:  # No Offence (13.11%) - MODERATE boost
-                        # Moderate weighting for No Offence
-                        weights[i] = min(4.0, max(2.5, 1.0 / (freq ** 0.8)))
-                    elif i == 1:  # Offence + No Card (56.19%) - Moderate downweight
-                        # Moderate downweighting for dominant class
-                        weights[i] = max(0.7, 1.0 / (freq ** 0.3))
-                    elif i == 2:  # Yellow Card (29.54%) - MAJOR boost
-                        # Ultra-aggressive weighting for Yellow Card
-                        weights[i] = min(6.0, max(3.5, 1.0 / (freq ** 0.9)))
-                    else:  # Red Card (1.16%) - Maximum boost
-                        # Maximum weighting for Red Card
-                        weights[i] = min(12.0, max(8.0, 1.0 / (freq ** 1.1)))
+                    if freq > 0.4:  # Very dominant classes (>40%) - Offence + No Card
+                        weights[i] = max(0.9, 1.0 / (freq ** 0.2))
+                    elif freq > 0.25:  # Major classes (25-40%) - Yellow Card
+                        weights[i] = max(1.0, min(1.8, 1.0 / (freq ** 0.4)))
+                    elif freq > 0.1:  # Medium classes (10-25%) - No Offence
+                        weights[i] = min(2.0, 1.0 / (freq ** 0.5))
+                    else:  # Very small classes (<10%) - Red Card
+                        weights[i] = min(2.5, max(1.8, 1.0 / (freq ** 0.7)))
                 else:
                     weights[i] = 1.0
         else:
