@@ -251,7 +251,7 @@ if __name__ == "__main__":
     parser.add_argument('--use_focal_loss', action='store_true', help='Use Focal Loss instead of CrossEntropyLoss')
     # parser.add_argument('--focal_loss_alpha', type=float, default=1.0, help='Alpha parameter for Focal Loss') # Removed this argument
     parser.add_argument('--focal_loss_gamma', type=float, default=2.0, help='Gamma parameter for Focal Loss')
-    parser.add_argument('--num_workers', type=int, default=8, help='Number of data loading workers')
+    parser.add_argument('--num_workers', type=int, default=12, help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--accumulation_steps', type=int, default=4, help='Number of batches to accumulate gradients over')
     
@@ -468,16 +468,9 @@ if __name__ == "__main__":
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         print("Using CrossEntropyLoss with per-class weights.")
 
-    # Initialize optimizer with discriminative learning rates
-    # Smaller learning rate for the pre-trained backbone
-    # Standard learning rate for the newly added heads
-    optimizer = optim.Adam([
-        {'params': model.model.parameters(), 'lr': LEARNING_RATE * 0.1}, # 1/10th of the main LR for backbone
-        {'params': model.shared_feature_head.parameters()},
-        {'params': model.shared_attention.parameters()},
-        {'params': model.action_head.parameters()},
-        {'params': model.severity_head.parameters()}
-    ], lr=LEARNING_RATE) # Default LR for custom heads
+    
+    # Initialize optimizer with same learning rate for all parameters
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     # Initialize learning rate scheduler (ReduceLROnPlateau)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
