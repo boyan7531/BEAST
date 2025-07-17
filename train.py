@@ -464,12 +464,12 @@ if __name__ == "__main__":
         # BALANCED alpha values for stable training
         action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 1.8, 2.0, 1.4, 2.2], device=DEVICE)  # Aligned with frequencies
         # Severity alpha: [No Offence, Offence+No Card, Yellow Card, Red Card]
-        severity_alpha = torch.tensor([2.0, 1.5, 2.5, 3.5], device=DEVICE)  # Boost Offence+No Card, reduce No Offence bias
+        severity_alpha = torch.tensor([1.5, 1.0, 1.8, 3.0], device=DEVICE)  # Balanced approach - slight boost to minorities
         
         # Use BALANCED parameters for stable training
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
         criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-        print(f"Using BALANCED Focal Loss: gamma=2.8, No Offence alpha=3.5, Yellow Card alpha=3.0, Offence+No Card alpha=0.8")
+        print(f"Using BALANCED Focal Loss: gamma=2.8, No Offence alpha=1.5, Offence+No Card alpha=1.0, Yellow Card alpha=1.8, Red Card alpha=3.0")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
