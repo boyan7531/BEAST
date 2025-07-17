@@ -174,11 +174,12 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
                 print(f"Warning: No valid clips found for action {action_number}")
                 continue
             
-            # Move clips to device - keep as list for the model
-            clips_tensors = [clip.to(DEVICE) for clip in clips_tensors]
+            # Stack clips into a single tensor (same as dataset class)
+            # Shape: (num_clips_for_action, C, num_frames, H, W)
+            combined_videos = torch.stack(clips_tensors).to(DEVICE)
             
-            # Forward pass - model expects a list of tensors for each action
-            action_logits, severity_logits = model(clips_tensors)
+            # Forward pass - model expects a list with one tensor per action
+            action_logits, severity_logits = model([combined_videos])
             
             # Get predictions
             _, predicted_action_idx = torch.max(action_logits, 1)
