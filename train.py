@@ -341,9 +341,9 @@ if __name__ == "__main__":
             for i in range(num_classes):
                 freq = class_frequencies[i]
                 if freq > 0:
-                    if i == 0:  # No Offence (13.11%) - MASSIVE boost
-                        # Ultra-aggressive weighting for No Offence
-                        weights[i] = min(8.0, max(4.5, 1.0 / (freq ** 1.0)))
+                    if i == 0:  # No Offence (13.11%) - MODERATE boost
+                        # Moderate weighting for No Offence
+                        weights[i] = min(4.0, max(2.5, 1.0 / (freq ** 0.8)))
                     elif i == 1:  # Offence + No Card (56.19%) - Moderate downweight
                         # Moderate downweighting for dominant class
                         weights[i] = max(0.7, 1.0 / (freq ** 0.3))
