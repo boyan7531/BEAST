@@ -300,7 +300,7 @@ if __name__ == "__main__":
     # Hardcoded values for removed arguments
     DATA_FOLDER = "mvfouls"
     TRAIN_SPLIT = "train"
-    VAL_SPLIT = "valid"
+    VAL_SPLIT = "test"
     START_FRAME = 63
     END_FRAME = 86
 
@@ -397,24 +397,35 @@ if __name__ == "__main__":
     print(f"Severity class distribution: {dict(severity_counts)}")
     print(f"Severity frequencies: {[(i, severity_counts[i]/total_samples) for i in range(4)]}")
     
-    # Create BALANCED sampling weights - moderate inverse frequency weighting
+    # Create HYBRID sampling weights - combine severity and action class info
     sample_weights = []
+    action_counts = Counter(all_action_labels)
+    
     for j in range(len(train_dataset)):
         severity_class = all_severity_labels[j]
-        freq = severity_counts[severity_class] / total_samples
+        action_class = all_action_labels[j]
         
-        if severity_class == 0:  # No Offence (13.11%) - Moderate boost
-            # Moderate boost for minority class
-            weight = min(2.5, max(1.5, 1.0 / (freq ** 0.6)))
-        elif severity_class == 1:  # Offence + No Card (56.19%) - Baseline
-            # Keep dominant class at baseline
-            weight = 1.0
-        elif severity_class == 2:  # Yellow Card (29.54%) - Moderate boost
-            # Moderate boost for minority class
-            weight = min(2.0, max(1.2, 1.0 / (freq ** 0.5)))
-        else:  # Red Card (1.16%) - Strong boost
-            # Strong boost for extreme minority
-            weight = min(8.0, max(4.0, 1.0 / (freq ** 0.8)))
+        # Base weight from severity
+        severity_freq = severity_counts[severity_class] / total_samples
+        if severity_class == 0:  # No Offence (13.11%)
+            severity_weight = min(2.0, max(1.3, 1.0 / (severity_freq ** 0.5)))
+        elif severity_class == 1:  # Offence + No Card (56.19%)
+            severity_weight = 1.0
+        elif severity_class == 2:  # Yellow Card (29.54%)
+            severity_weight = min(1.8, max(1.2, 1.0 / (severity_freq ** 0.4)))
+        else:  # Red Card (1.16%)
+            severity_weight = min(4.0, max(2.0, 1.0 / (severity_freq ** 0.6)))
+        
+        # Additional boost for zero-recall action classes
+        action_freq = action_counts[action_class] / total_samples
+        if action_class in [4, 7]:  # Pushing, Dive (persistent 0% recall)
+            action_boost = 1.5
+        elif action_freq < 0.05:  # Other rare action classes
+            action_boost = 1.2
+        else:
+            action_boost = 1.0
+        
+        weight = severity_weight * action_boost
         
         sample_weights.append(weight)
 
@@ -461,15 +472,15 @@ if __name__ == "__main__":
     print(f"Using {args.aggregation} aggregation method")
     
     if USE_FOCAL_LOSS:
-        # BALANCED alpha values for stable training
-        action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 1.8, 2.0, 1.4, 2.2], device=DEVICE)  # Aligned with frequencies
+        # OPTIMIZED alpha values - boost persistent zero-recall classes
+        action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 2.5, 2.0, 1.6, 2.8], device=DEVICE)  # Higher boost for Pushing & Dive
         # Severity alpha: [No Offence, Offence+No Card, Yellow Card, Red Card]
-        severity_alpha = torch.tensor([2.0, 1.0, 1.5, 3.0], device=DEVICE)  # Boost No Offence slightly, reduce Yellow Card
+        severity_alpha = torch.tensor([1.8, 1.0, 1.6, 2.5], device=DEVICE)  # More balanced approach
         
         # Use BALANCED parameters for stable training
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
         criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-        print(f"Using BALANCED Focal Loss: gamma=2.8, No Offence alpha=2.0, Offence+No Card alpha=1.0, Yellow Card alpha=1.5, Red Card alpha=3.0")
+        print(f"Using BALANCED Focal Loss: gamma=2.8, No Offence alpha=1.8, Offence+No Card alpha=1.0, Yellow Card alpha=1.6, Red Card alpha=2.5")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -552,12 +563,22 @@ if __name__ == "__main__":
                 with torch.amp.autocast(device_type='cuda'):
                     action_logits, severity_logits = model(videos)
 
-                    # Calculate loss with BALANCED weighting
+                    # Calculate loss with DYNAMIC weighting based on performance
                     loss_action = criterion_action(action_logits, action_labels)
                     loss_severity = criterion_severity(severity_logits, severity_labels)
                     
-                    # Give 1.5x more weight to severity loss (balanced focus)
-                    total_loss = loss_action + (1.5 * loss_severity)
+                    # Dynamic loss weighting - start severity-focused, gradually balance
+                    if epoch < 5:
+                        # Early epochs: focus heavily on severity (it was the main problem)
+                        severity_weight = 2.0
+                    elif epoch < 10:
+                        # Mid epochs: gradually balance
+                        severity_weight = 1.5
+                    else:
+                        # Later epochs: more balanced approach
+                        severity_weight = 1.2
+                    
+                    total_loss = loss_action + (severity_weight * loss_severity)
 
             # Normalize loss to account for accumulation
             total_loss = total_loss / ACCUMULATION_STEPS

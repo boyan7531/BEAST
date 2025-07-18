@@ -518,7 +518,7 @@ class SmartRebalancer:
                 'epoch': int(m.epoch),
                 'macro_recall': float(m.macro_recall),
                 'macro_f1': float(m.macro_f1),
-                'per_class_recall': {str(k): float(v) for k, v in m.per_class_recall.items()}
+                'per_class_recall': {str(int(k)): float(v) for k, v in m.per_class_recall.items()}
             } for m in recent_action
         ]
         
@@ -527,7 +527,7 @@ class SmartRebalancer:
                 'epoch': int(m.epoch),
                 'macro_recall': float(m.macro_recall),
                 'macro_f1': float(m.macro_f1),
-                'per_class_recall': {str(k): float(v) for k, v in m.per_class_recall.items()}
+                'per_class_recall': {str(int(k)): float(v) for k, v in m.per_class_recall.items()}
             } for m in recent_severity
         ]
         
