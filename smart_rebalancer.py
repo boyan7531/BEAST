@@ -377,7 +377,7 @@ class SmartRebalancer:
         sampling_multipliers = {}
         for class_id in range(self.num_severity_classes):
             freq = severity_freqs[class_id]
-            recall = severity_performance.get(class_id, 0.0)
+            recall = severity_performance.get(int(class_id), 0.0)  # Ensure int key
             
             # Base weight from frequency
             if freq > 0.5:  # Dominant class

@@ -416,12 +416,14 @@ if __name__ == "__main__":
         else:  # Red Card (1.16%)
             severity_weight = min(4.0, max(2.0, 1.0 / (severity_freq ** 0.6)))
         
-        # Additional boost for zero-recall action classes
+        # ULTRA-AGGRESSIVE boost for zero-recall action classes (45%+ target)
         action_freq = action_counts[action_class] / total_samples
         if action_class in [4, 7]:  # Pushing, Dive (persistent 0% recall)
-            action_boost = 1.5
+            action_boost = 2.5  # Massive boost for zero-recall classes
         elif action_freq < 0.05:  # Other rare action classes
-            action_boost = 1.2
+            action_boost = 1.8  # Strong boost for rare classes
+        elif action_freq < 0.15:  # Medium rare classes
+            action_boost = 1.3  # Moderate boost
         else:
             action_boost = 1.0
         
@@ -472,15 +474,14 @@ if __name__ == "__main__":
     print(f"Using {args.aggregation} aggregation method")
     
     if USE_FOCAL_LOSS:
-        # OPTIMIZED alpha values - boost persistent zero-recall classes
-        action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 2.5, 2.0, 1.6, 2.8], device=DEVICE)  # Higher boost for Pushing & Dive
-        # Severity alpha: [No Offence, Offence+No Card, Yellow Card, Red Card]
-        severity_alpha = torch.tensor([1.8, 1.0, 1.6, 2.5], device=DEVICE)  # More balanced approach
+        # PROGRESSIVE alpha values for 45%+ target - start moderate, increase gradually
+        action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.5, 2.2, 2.0, 1.6, 2.5], device=DEVICE)  # Moderate boost for Pushing & Dive
+        severity_alpha = torch.tensor([2.0, 1.0, 1.8, 2.8], device=DEVICE)  # Moderate boost for minorities
         
-        # Use BALANCED parameters for stable training
+        # Initialize with ultra-aggressive values (will be updated dynamically)
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
         criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-        print(f"Using BALANCED Focal Loss: gamma=2.8, No Offence alpha=1.8, Offence+No Card alpha=1.0, Yellow Card alpha=1.6, Red Card alpha=2.5")
+        print(f"Using ULTRA-AGGRESSIVE Focal Loss for 45%+: Action[Pushing=3.5, Dive=4.0], Severity[No Offence=2.5, Yellow=2.2, Red=3.5]")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -501,8 +502,8 @@ if __name__ == "__main__":
     print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
 
     # Initialize learning rate scheduler (StepLR) - more predictable for imbalanced learning
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
-    print(f"Using StepLR scheduler: step_size=3, gamma=0.1 (LR will drop 10x every 3 epochs)")
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.5)
+    print(f"Using StepLR scheduler: step_size=4, gamma=0.5 (LR will drop 2x every 4 epochs)")
     
     # Early stopping variables
     best_val_loss = float('inf')
@@ -567,16 +568,24 @@ if __name__ == "__main__":
                     loss_action = criterion_action(action_logits, action_labels)
                     loss_severity = criterion_severity(severity_logits, severity_labels)
                     
-                    # Dynamic loss weighting - start severity-focused, gradually balance
-                    if epoch < 5:
-                        # Early epochs: focus heavily on severity (it was the main problem)
-                        severity_weight = 2.0
-                    elif epoch < 10:
-                        # Mid epochs: gradually balance
-                        severity_weight = 1.5
+                    # ULTRA-AGGRESSIVE dynamic loss weighting for 45%+ target with safety checks
+                    if epoch < 3:
+                        # Very early epochs: extreme severity focus
+                        severity_weight = 3.0
+                    elif epoch < 8:
+                        # Early-mid epochs: strong severity focus  
+                        severity_weight = 2.5
+                    elif epoch < 15:
+                        # Mid epochs: balanced but severity-leaning
+                        severity_weight = 1.8
                     else:
-                        # Later epochs: more balanced approach
-                        severity_weight = 1.2
+                        # Later epochs: slight severity preference
+                        severity_weight = 1.4
+                    
+                    # Safety mechanism: if validation loss explodes, reduce severity weight
+                    if 'prev_val_loss' in locals() and val_loss > prev_val_loss * 1.5:
+                        severity_weight = min(severity_weight, 1.2)
+                        print(f"Safety: Reduced severity weight to {severity_weight} due to loss spike")
                     
                     total_loss = loss_action + (severity_weight * loss_severity)
 
