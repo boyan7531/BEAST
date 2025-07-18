@@ -501,8 +501,8 @@ if __name__ == "__main__":
     print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
 
     # Initialize learning rate scheduler (StepLR) - more predictable for imbalanced learning
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.5)
-    print(f"Using StepLR scheduler: step_size=8, gamma=0.5 (LR will be halved every 8 epochs)")
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+    print(f"Using StepLR scheduler: step_size=3, gamma=0.1 (LR will drop 10x every 3 epochs)")
     
     # Early stopping variables
     best_val_loss = float('inf')
