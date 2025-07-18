@@ -474,9 +474,9 @@ if __name__ == "__main__":
     print(f"Using {args.aggregation} aggregation method")
     
     if USE_FOCAL_LOSS:
-        # PROGRESSIVE alpha values for 45%+ target - start moderate, increase gradually
-        action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.5, 2.2, 2.0, 1.6, 2.5], device=DEVICE)  # Moderate boost for Pushing & Dive
-        severity_alpha = torch.tensor([2.0, 1.0, 1.8, 2.8], device=DEVICE)  # Moderate boost for minorities
+        # CONSERVATIVE alpha values for stable 45%+ target
+        action_alpha = torch.tensor([1.2, 0.9, 1.6, 1.4, 1.8, 1.8, 1.5, 2.0], device=DEVICE)  # Conservative boost for Pushing & Dive
+        severity_alpha = torch.tensor([1.6, 1.0, 1.5, 2.2], device=DEVICE)  # Conservative boost for minorities
         
         # Initialize with ultra-aggressive values (will be updated dynamically)
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
