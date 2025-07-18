@@ -254,6 +254,10 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=12, help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--accumulation_steps', type=int, default=4, help='Number of batches to accumulate gradients over')
+    parser.add_argument('--exclude_classes', type=str, default='', 
+                        help='Comma-separated list of classes to exclude from training (e.g., "action_4,action_7,severity_3" for Pushing,Dive,RedCard)')
+    parser.add_argument('--exclude_problematic', action='store_true',
+                        help='Exclude the most problematic classes: Pushing, Dive, and Red Card from training')
     
     # Aggregation method argument
     parser.add_argument('--aggregation', type=str, default='attention', choices=['max', 'mean', 'attention'], 
@@ -316,6 +320,34 @@ if __name__ == "__main__":
         NUM_WORKERS = 0
 
     print(f"Using device: {DEVICE}")
+
+    # Parse class exclusion settings
+    excluded_action_classes = set()
+    excluded_severity_classes = set()
+    
+    if args.exclude_problematic:
+        # Exclude the most problematic classes: Pushing (4), Dive (7), Red Card (3)
+        excluded_action_classes.update([4, 7])  # Pushing, Dive
+        excluded_severity_classes.update([3])   # Red Card
+        print("Excluding problematic classes from training: Pushing, Dive, Red Card")
+    
+    if args.exclude_classes:
+        # Parse custom exclusion list (e.g., "action_4,action_7,severity_3")
+        for class_spec in args.exclude_classes.split(','):
+            class_spec = class_spec.strip()
+            if class_spec.startswith('action_'):
+                class_id = int(class_spec.split('_')[1])
+                excluded_action_classes.add(class_id)
+            elif class_spec.startswith('severity_'):
+                class_id = int(class_spec.split('_')[1])
+                excluded_severity_classes.add(class_id)
+        print(f"Custom excluded action classes: {sorted(excluded_action_classes)}")
+        print(f"Custom excluded severity classes: {sorted(excluded_severity_classes)}")
+    
+    if excluded_action_classes or excluded_severity_classes:
+        print(f"Final excluded action classes: {sorted(excluded_action_classes)}")
+        print(f"Final excluded severity classes: {sorted(excluded_severity_classes)}")
+        print("Note: Model will be trained without these classes but evaluated on ALL original classes")
 
     # Initialize GradScaler for Mixed Precision Training
     scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
@@ -481,7 +513,7 @@ if __name__ == "__main__":
         # Initialize with ultra-aggressive values (will be updated dynamically)
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
         criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-        print(f"Using ULTRA-AGGRESSIVE Focal Loss for 45%+: Action[Pushing=3.5, Dive=4.0], Severity[No Offence=2.5, Yellow=2.2, Red=3.5]")
+        print(f"Using CONSERVATIVE Focal Loss for stable 45%+: Action[Pushing=1.8, Dive=2.0], Severity[No Offence=1.6, Yellow=1.5, Red=2.2]")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -544,6 +576,30 @@ if __name__ == "__main__":
             # Labels are now (batch_size, num_classes) directly from custom_collate_fn
             action_labels = torch.argmax(action_labels, dim=1).to(DEVICE)
             severity_labels = torch.argmax(severity_labels, dim=1).to(DEVICE)
+            
+            # Filter out excluded classes from training (but keep for evaluation)
+            if excluded_action_classes or excluded_severity_classes:
+                # Create mask for samples to keep in training
+                keep_mask = torch.ones(len(action_labels), dtype=torch.bool, device=DEVICE)
+                
+                # Remove samples with excluded action classes
+                if excluded_action_classes:
+                    for excluded_class in excluded_action_classes:
+                        keep_mask &= (action_labels != excluded_class)
+                
+                # Remove samples with excluded severity classes  
+                if excluded_severity_classes:
+                    for excluded_class in excluded_severity_classes:
+                        keep_mask &= (severity_labels != excluded_class)
+                
+                # Skip batch if no samples remain after filtering
+                if keep_mask.sum() == 0:
+                    continue
+                
+                # Filter the data
+                videos = [videos[idx] for idx in range(len(videos)) if keep_mask[idx]]
+                action_labels = action_labels[keep_mask]
+                severity_labels = severity_labels[keep_mask]
 
             # Apply mixup if recommended by smart rebalancer
             if use_mixup and mixup_alpha > 0:
