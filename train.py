@@ -407,6 +407,37 @@ if __name__ == "__main__":
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
     train_dataset = MVFoulsDataset(DATA_FOLDER, TRAIN_SPLIT, START_FRAME, END_FRAME, transform_model=get_train_transforms(MODEL_INPUT_SIZE))
+    
+    # Filter training dataset if class exclusion is enabled
+    if excluded_action_classes or excluded_severity_classes:
+        print(f"Filtering training dataset to exclude classes...")
+        original_train_size = len(train_dataset)
+        
+        # Filter training dataset
+        filtered_indices = []
+        for i in range(len(train_dataset)):
+            _, action_label, severity_label, _ = train_dataset[i]
+            action_class = torch.argmax(action_label).item()
+            severity_class = torch.argmax(severity_label).item()
+            
+            # Keep sample if it doesn't contain excluded classes
+            keep_sample = True
+            if action_class in excluded_action_classes:
+                keep_sample = False
+            if severity_class in excluded_severity_classes:
+                keep_sample = False
+                
+            if keep_sample:
+                filtered_indices.append(i)
+        
+        # Create filtered dataset
+        train_dataset.data_list = [train_dataset.data_list[i] for i in filtered_indices]
+        train_dataset.labels_action_list = [train_dataset.labels_action_list[i] for i in filtered_indices]
+        train_dataset.labels_severity_list = [train_dataset.labels_severity_list[i] for i in filtered_indices]
+        train_dataset.length = len(train_dataset.data_list)
+        
+        print(f"Training dataset filtered: {original_train_size} → {len(train_dataset)} samples")
+        print(f"Removed {original_train_size - len(train_dataset)} samples with excluded classes")
 
     # Calculate class weights for action and severity labels in the training set
     num_action_classes = 8 # As defined in data_loader.py
@@ -577,29 +608,7 @@ if __name__ == "__main__":
             action_labels = torch.argmax(action_labels, dim=1).to(DEVICE)
             severity_labels = torch.argmax(severity_labels, dim=1).to(DEVICE)
             
-            # Filter out excluded classes from training (but keep for evaluation)
-            if excluded_action_classes or excluded_severity_classes:
-                # Create mask for samples to keep in training
-                keep_mask = torch.ones(len(action_labels), dtype=torch.bool, device=DEVICE)
-                
-                # Remove samples with excluded action classes
-                if excluded_action_classes:
-                    for excluded_class in excluded_action_classes:
-                        keep_mask &= (action_labels != excluded_class)
-                
-                # Remove samples with excluded severity classes  
-                if excluded_severity_classes:
-                    for excluded_class in excluded_severity_classes:
-                        keep_mask &= (severity_labels != excluded_class)
-                
-                # Skip batch if no samples remain after filtering
-                if keep_mask.sum() == 0:
-                    continue
-                
-                # Filter the data
-                videos = [videos[idx] for idx in range(len(videos)) if keep_mask[idx]]
-                action_labels = action_labels[keep_mask]
-                severity_labels = severity_labels[keep_mask]
+            # Note: Class exclusion filtering is now done at dataset level, so no need to filter here
 
             # Apply mixup if recommended by smart rebalancer
             if use_mixup and mixup_alpha > 0:
