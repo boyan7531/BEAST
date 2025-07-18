@@ -379,8 +379,10 @@ class SmartRebalancer:
             freq = severity_freqs[class_id]
             recall = severity_performance.get(int(class_id), 0.0)  # Ensure int key
             
-            # Base weight from frequency
-            if freq > 0.5:  # Dominant class
+            # Base weight from frequency - handle zero frequency case
+            if freq == 0.0:  # Excluded class
+                base_weight = 1.0  # Default weight for excluded classes
+            elif freq > 0.5:  # Dominant class
                 base_weight = max(0.5, 1.0 / (freq ** 0.4))
             elif freq > 0.25:  # Major class
                 base_weight = min(1.5, 1.0 / (freq ** 0.6))

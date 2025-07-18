@@ -413,10 +413,13 @@ if __name__ == "__main__":
         print(f"Filtering training dataset to exclude classes...")
         original_train_size = len(train_dataset)
         
-        # Filter training dataset
+        # Fast filtering using pre-loaded labels (no video loading needed)
         filtered_indices = []
-        for i in range(len(train_dataset)):
-            _, action_label, severity_label, _ = train_dataset[i]
+        for i in range(len(train_dataset.labels_action_list)):
+            action_label = train_dataset.labels_action_list[i]
+            severity_label = train_dataset.labels_severity_list[i]
+            
+            # Convert one-hot to class indices
             action_class = torch.argmax(action_label).item()
             severity_class = torch.argmax(severity_label).item()
             
@@ -430,7 +433,7 @@ if __name__ == "__main__":
             if keep_sample:
                 filtered_indices.append(i)
         
-        # Create filtered dataset
+        # Create filtered dataset (fast - no video loading)
         train_dataset.data_list = [train_dataset.data_list[i] for i in filtered_indices]
         train_dataset.labels_action_list = [train_dataset.labels_action_list[i] for i in filtered_indices]
         train_dataset.labels_severity_list = [train_dataset.labels_severity_list[i] for i in filtered_indices]
