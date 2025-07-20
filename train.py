@@ -567,12 +567,27 @@ if __name__ == "__main__":
     
     print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
 
-    # Initialize learning rate scheduler (StepLR) - more predictable for imbalanced learning
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.5)
-    print(f"Using StepLR scheduler: step_size=4, gamma=0.5 (LR will drop 2x every 4 epochs)")
+    # Initialize learning rate scheduler - designed for extreme class imbalance
+    # Key improvements over previous StepLR (step_size=3, gamma=0.1):
+    # 1. Adaptive based on macro recall (not fixed schedule)
+    # 2. Gentler reductions (0.75x vs 0.1x) 
+    # 3. More patience (5 epochs vs 3 epochs)
+    # 4. Higher minimum LR (5e-7 vs effectively 0)
+    # 5. Cooldown period to prevent rapid successive reductions
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, 
+        mode='max',  # Monitor macro recall (we want to maximize it)
+        factor=0.75,  # Reduce LR by 25% (gentler reduction)
+        patience=5,  # Wait 5 epochs before reducing (more patience for minority classes)
+        threshold=0.005,  # Only reduce if improvement < 0.5% (more sensitive)
+        min_lr=5e-7,  # Don't go below 5e-7 (maintain some learning capacity)
+        verbose=True,
+        cooldown=2  # Wait 2 epochs after LR reduction before next reduction
+    )
+    print(f"Using ReduceLROnPlateau scheduler: factor=0.75, patience=5, threshold=0.005, min_lr=5e-7")
     
-    # Early stopping variables
-    best_val_loss = float('inf')
+    # Early stopping variables - track macro recall instead of loss
+    best_macro_recall = 0.0
     patience_counter = 0
     early_stopping_patience = 20
 
@@ -587,6 +602,16 @@ if __name__ == "__main__":
     for epoch in range(EPOCHS):
         model.train() # Set model to training mode
         running_loss = 0.0
+        
+        # Learning rate warmup for first 3 epochs (helps with extreme imbalance)
+        if epoch < 3:
+            warmup_factor = (epoch + 1) / 3.0  # Gradually increase from 1/3 to 1.0
+            base_lr = LEARNING_RATE
+            severity_lr = LEARNING_RATE * 1.5
+            
+            # Apply warmup to both parameter groups
+            optimizer.param_groups[0]['lr'] = base_lr * warmup_factor  # Base parameters
+            optimizer.param_groups[1]['lr'] = severity_lr * warmup_factor  # Severity head parameters
         
         # Get mixup parameters from smart rebalancer if enabled
         use_mixup = False
@@ -675,7 +700,10 @@ if __name__ == "__main__":
         current_batches_processed = i + 1 if TEST_BATCHES == 0 else min(i + 1, TEST_BATCHES)
         avg_train_loss = running_loss / current_batches_processed if current_batches_processed > 0 else 0.0
         print(f"Epoch {epoch + 1} finished. Average Training Loss: {avg_train_loss:.4f}")
-        print(f"Current Learning Rate: {scheduler.get_last_lr()[0]:.6f}")
+        # Get current learning rates for both parameter groups
+        base_lr = optimizer.param_groups[0]['lr']
+        severity_lr = optimizer.param_groups[1]['lr']
+        print(f"Current Learning Rates - Base: {base_lr:.6f}, Severity Head: {severity_lr:.6f}")
 
         # Save the model after each epoch
         model_save_path = os.path.join(MODEL_SAVE_DIR, f"model_epoch_{epoch+1}.pth")
@@ -810,20 +838,20 @@ if __name__ == "__main__":
                 avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
                 print(f"Validation Loss: {avg_val_loss:.4f}")
 
-                # Step the learning rate scheduler
-                scheduler.step()
+                # Step the learning rate scheduler with combined macro recall
+                scheduler.step(combined_macro_recall)
                 
-                # Early stopping logic
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
+                # Early stopping logic - based on macro recall improvement
+                if combined_macro_recall > best_macro_recall:
+                    best_macro_recall = combined_macro_recall
                     patience_counter = 0
                     # Save best model
                     best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model.pth")
                     torch.save(model.state_dict(), best_model_path)
-                    print(f"New best model saved with validation loss: {best_val_loss:.4f}")
+                    print(f"New best model saved with macro recall: {best_macro_recall:.4f}")
                 else:
                     patience_counter += 1
-                    print(f"No improvement in validation loss. Patience: {patience_counter}/{early_stopping_patience}")
+                    print(f"No improvement in macro recall. Patience: {patience_counter}/{early_stopping_patience}")
                     
                 if patience_counter >= early_stopping_patience:
                     print(f"Early stopping triggered after {epoch + 1} epochs")
