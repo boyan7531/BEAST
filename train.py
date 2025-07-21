@@ -254,6 +254,10 @@ if __name__ == "__main__":
     parser.add_argument('--num_workers', type=int, default=12, help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     parser.add_argument('--accumulation_steps', type=int, default=4, help='Number of batches to accumulate gradients over')
+    parser.add_argument('--exclude_classes', type=str, default='', 
+                        help='Comma-separated list of classes to exclude from training (e.g., "action_4,action_7,severity_3" for Pushing,Dive,RedCard)')
+    parser.add_argument('--exclude_problematic', action='store_true',
+                        help='Exclude the most problematic classes: Pushing, Dive, and Red Card from training')
     
     # Aggregation method argument
     parser.add_argument('--aggregation', type=str, default='attention', choices=['max', 'mean', 'attention'], 
@@ -317,6 +321,34 @@ if __name__ == "__main__":
 
     print(f"Using device: {DEVICE}")
 
+    # Parse class exclusion settings
+    excluded_action_classes = set()
+    excluded_severity_classes = set()
+    
+    if args.exclude_problematic:
+        # Exclude the most problematic classes: Pushing (4), Dive (7), Red Card (3)
+        excluded_action_classes.update([4, 7])  # Pushing, Dive
+        excluded_severity_classes.update([3])   # Red Card
+        print("Excluding problematic classes from training: Pushing, Dive, Red Card")
+    
+    if args.exclude_classes:
+        # Parse custom exclusion list (e.g., "action_4,action_7,severity_3")
+        for class_spec in args.exclude_classes.split(','):
+            class_spec = class_spec.strip()
+            if class_spec.startswith('action_'):
+                class_id = int(class_spec.split('_')[1])
+                excluded_action_classes.add(class_id)
+            elif class_spec.startswith('severity_'):
+                class_id = int(class_spec.split('_')[1])
+                excluded_severity_classes.add(class_id)
+        print(f"Custom excluded action classes: {sorted(excluded_action_classes)}")
+        print(f"Custom excluded severity classes: {sorted(excluded_severity_classes)}")
+    
+    if excluded_action_classes or excluded_severity_classes:
+        print(f"Final excluded action classes: {sorted(excluded_action_classes)}")
+        print(f"Final excluded severity classes: {sorted(excluded_severity_classes)}")
+        print("Note: Model will be trained without these classes but evaluated on ALL original classes")
+
     # Initialize GradScaler for Mixed Precision Training
     scaler = torch.amp.GradScaler(device='cuda') # Corrected for newer PyTorch versions
 
@@ -375,6 +407,40 @@ if __name__ == "__main__":
     # 2. Prepare Datasets and DataLoaders
     # Initialize training dataset and dataloader
     train_dataset = MVFoulsDataset(DATA_FOLDER, TRAIN_SPLIT, START_FRAME, END_FRAME, transform_model=get_train_transforms(MODEL_INPUT_SIZE))
+    
+    # Filter training dataset if class exclusion is enabled
+    if excluded_action_classes or excluded_severity_classes:
+        print(f"Filtering training dataset to exclude classes...")
+        original_train_size = len(train_dataset)
+        
+        # Fast filtering using pre-loaded labels (no video loading needed)
+        filtered_indices = []
+        for i in range(len(train_dataset.labels_action_list)):
+            action_label = train_dataset.labels_action_list[i]
+            severity_label = train_dataset.labels_severity_list[i]
+            
+            # Convert one-hot to class indices
+            action_class = torch.argmax(action_label).item()
+            severity_class = torch.argmax(severity_label).item()
+            
+            # Keep sample if it doesn't contain excluded classes
+            keep_sample = True
+            if action_class in excluded_action_classes:
+                keep_sample = False
+            if severity_class in excluded_severity_classes:
+                keep_sample = False
+                
+            if keep_sample:
+                filtered_indices.append(i)
+        
+        # Create filtered dataset (fast - no video loading)
+        train_dataset.data_list = [train_dataset.data_list[i] for i in filtered_indices]
+        train_dataset.labels_action_list = [train_dataset.labels_action_list[i] for i in filtered_indices]
+        train_dataset.labels_severity_list = [train_dataset.labels_severity_list[i] for i in filtered_indices]
+        train_dataset.length = len(train_dataset.data_list)
+        
+        print(f"Training dataset filtered: {original_train_size} → {len(train_dataset)} samples")
+        print(f"Removed {original_train_size - len(train_dataset)} samples with excluded classes")
 
     # Calculate class weights for action and severity labels in the training set
     num_action_classes = 8 # As defined in data_loader.py
@@ -416,12 +482,14 @@ if __name__ == "__main__":
         else:  # Red Card (1.16%)
             severity_weight = min(4.0, max(2.0, 1.0 / (severity_freq ** 0.6)))
         
-        # Additional boost for zero-recall action classes
+        # ULTRA-AGGRESSIVE boost for zero-recall action classes (45%+ target)
         action_freq = action_counts[action_class] / total_samples
         if action_class in [4, 7]:  # Pushing, Dive (persistent 0% recall)
-            action_boost = 1.5
+            action_boost = 2.5  # Massive boost for zero-recall classes
         elif action_freq < 0.05:  # Other rare action classes
-            action_boost = 1.2
+            action_boost = 1.8  # Strong boost for rare classes
+        elif action_freq < 0.15:  # Medium rare classes
+            action_boost = 1.3  # Moderate boost
         else:
             action_boost = 1.0
         
@@ -472,15 +540,14 @@ if __name__ == "__main__":
     print(f"Using {args.aggregation} aggregation method")
     
     if USE_FOCAL_LOSS:
-        # OPTIMIZED alpha values - boost persistent zero-recall classes
-        action_alpha = torch.tensor([1.2, 0.9, 1.8, 1.4, 2.5, 2.0, 1.6, 2.8], device=DEVICE)  # Higher boost for Pushing & Dive
-        # Severity alpha: [No Offence, Offence+No Card, Yellow Card, Red Card]
-        severity_alpha = torch.tensor([1.8, 1.0, 1.6, 2.5], device=DEVICE)  # More balanced approach
+        # CONSERVATIVE alpha values for stable 45%+ target
+        action_alpha = torch.tensor([1.2, 0.9, 1.6, 1.4, 1.8, 1.8, 1.5, 2.0], device=DEVICE)  # Conservative boost for Pushing & Dive
+        severity_alpha = torch.tensor([1.6, 1.0, 1.5, 2.2], device=DEVICE)  # Conservative boost for minorities
         
-        # Use BALANCED parameters for stable training
+        # Initialize with ultra-aggressive values (will be updated dynamically)
         criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
         criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-        print(f"Using BALANCED Focal Loss: gamma=2.8, No Offence alpha=1.8, Offence+No Card alpha=1.0, Yellow Card alpha=1.6, Red Card alpha=2.5")
+        print(f"Using CONSERVATIVE Focal Loss for stable 45%+: Action[Pushing=1.8, Dive=2.0], Severity[No Offence=1.6, Yellow=1.5, Red=2.2]")
     else:
         criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
         criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -501,8 +568,8 @@ if __name__ == "__main__":
     print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
 
     # Initialize learning rate scheduler (StepLR) - more predictable for imbalanced learning
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
-    print(f"Using StepLR scheduler: step_size=3, gamma=0.1 (LR will drop 10x every 3 epochs)")
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.5)
+    print(f"Using StepLR scheduler: step_size=4, gamma=0.5 (LR will drop 2x every 4 epochs)")
     
     # Early stopping variables
     best_val_loss = float('inf')
@@ -543,6 +610,8 @@ if __name__ == "__main__":
             # Labels are now (batch_size, num_classes) directly from custom_collate_fn
             action_labels = torch.argmax(action_labels, dim=1).to(DEVICE)
             severity_labels = torch.argmax(severity_labels, dim=1).to(DEVICE)
+            
+            # Note: Class exclusion filtering is now done at dataset level, so no need to filter here
 
             # Apply mixup if recommended by smart rebalancer
             if use_mixup and mixup_alpha > 0:
@@ -567,16 +636,24 @@ if __name__ == "__main__":
                     loss_action = criterion_action(action_logits, action_labels)
                     loss_severity = criterion_severity(severity_logits, severity_labels)
                     
-                    # Dynamic loss weighting - start severity-focused, gradually balance
-                    if epoch < 5:
-                        # Early epochs: focus heavily on severity (it was the main problem)
-                        severity_weight = 2.0
-                    elif epoch < 10:
-                        # Mid epochs: gradually balance
-                        severity_weight = 1.5
+                    # ULTRA-AGGRESSIVE dynamic loss weighting for 45%+ target with safety checks
+                    if epoch < 3:
+                        # Very early epochs: extreme severity focus
+                        severity_weight = 3.0
+                    elif epoch < 8:
+                        # Early-mid epochs: strong severity focus  
+                        severity_weight = 2.5
+                    elif epoch < 15:
+                        # Mid epochs: balanced but severity-leaning
+                        severity_weight = 1.8
                     else:
-                        # Later epochs: more balanced approach
-                        severity_weight = 1.2
+                        # Later epochs: slight severity preference
+                        severity_weight = 1.4
+                    
+                    # Safety mechanism: if validation loss explodes, reduce severity weight
+                    if 'prev_val_loss' in locals() and val_loss > prev_val_loss * 1.5:
+                        severity_weight = min(severity_weight, 1.2)
+                        print(f"Safety: Reduced severity weight to {severity_weight} due to loss spike")
                     
                     total_loss = loss_action + (severity_weight * loss_severity)
 
