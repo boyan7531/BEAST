@@ -27,7 +27,13 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
     # Load the model
     model = MVFoulsModel().to(DEVICE)
     if os.path.exists(model_path):
-        model.load_state_dict(torch.load(model_path, map_location=DEVICE, weights_only=True))
+        checkpoint = torch.load(model_path, map_location=DEVICE, weights_only=False)
+        if 'model_state_dict' in checkpoint:
+            # New checkpoint format
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            # Legacy checkpoint (just model weights)
+            model.load_state_dict(checkpoint)
         print(f"Model loaded successfully from {model_path}")
     else:
         print(f"Warning: Model checkpoint not found at {model_path}. Using randomly initialized model.")
@@ -228,7 +234,13 @@ def evaluate_model(model_path, data_folder="mvfouls", test_split="test", start_f
     # Load the model
     model = MVFoulsModel().to(DEVICE)
     if os.path.exists(model_path):
-        model.load_state_dict(torch.load(model_path, map_location=DEVICE, weights_only=True))
+        checkpoint = torch.load(model_path, map_location=DEVICE, weights_only=False)
+        if 'model_state_dict' in checkpoint:
+            # New checkpoint format
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            # Legacy checkpoint (just model weights)
+            model.load_state_dict(checkpoint)
         print(f"Model loaded successfully from {model_path}")
     else:
         print(f"Warning: Model checkpoint not found at {model_path}. Using randomly initialized model.")

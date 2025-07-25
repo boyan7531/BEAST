@@ -227,7 +227,7 @@ def set_seed(seed):
 def load_checkpoint(model, optimizer, scheduler, checkpoint_path, rebalancer=None):
     """Load model checkpoint and resume training"""
     print(f"Loading checkpoint from {checkpoint_path}")
-    checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
+    checkpoint = torch.load(checkpoint_path, map_location=DEVICE, weights_only=False)
     
     if 'model_state_dict' in checkpoint:
         # New checkpoint format
