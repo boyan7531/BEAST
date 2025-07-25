@@ -10,3 +10,7 @@ data_distribution.txt
 .kiro\
 .kiro/
 .kiro
+venv
+rebalancing_logs
+*.pth
+training.txt
