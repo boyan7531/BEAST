@@ -19,8 +19,8 @@ class MVFoulsDataset(Dataset):
         duration_frames = end_frame - start_frame + 1  # +1 for inclusive range (63 to 86 = 24 frames)
         
         print(f"Frame sampling config: start={start_frame}, end={end_frame}")
-        print(f"Duration: {duration_frames} frames (using all frames without downsampling)")
-        print(f"Output frames: {duration_frames}")
+        print(f"Duration: {duration_frames} frames, intelligently downsampled to 16 frames for MViT")
+        print(f"Output frames: 16 (uniform sampling from {duration_frames} frames)")
         self.labels_action_list, self.labels_severity_list, self.useless_actions = label_to_numerical(folder_path, split)
         self.clip_paths_dict = load_clips(folder_path, split, self.useless_actions)
         self.length = len(self.labels_action_list)
@@ -56,8 +56,16 @@ class MVFoulsDataset(Dataset):
             all_frame_indices = list(range(self.start_frame, self.end_frame + 1))  # 63 to 86 inclusive = 24 frames
             all_frames = vr.get_batch(all_frame_indices).asnumpy()
             
-            # Use all frames without downsampling
-            selected_frames = all_frames
+            # Intelligent temporal downsampling to exactly 16 frames for MViT
+            if len(all_frames) > 16:
+                # Use uniform sampling to get exactly 16 frames
+                indices = torch.linspace(0, len(all_frames) - 1, 16).long()
+                selected_frames = [all_frames[i] for i in indices]
+            else:
+                # If we have 16 or fewer frames, use all and pad if necessary
+                selected_frames = all_frames
+                while len(selected_frames) < 16:
+                    selected_frames.append(selected_frames[-1])  # Repeat last frame
             
             # Convert to tensor
             video = torch.from_numpy(np.stack(selected_frames))

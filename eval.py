@@ -93,8 +93,8 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
     duration_frames = end_frame - start_frame + 1
 
     print(f"Frame sampling config: start={start_frame}, end={end_frame}")
-    print(f"Duration: {duration_frames} frames (using all frames without downsampling)")
-    print(f"Output frames: {duration_frames}")
+    print(f"Duration: {duration_frames} frames, intelligently downsampled to 16 frames for MViT")
+    print(f"Output frames: 16 (uniform sampling from {duration_frames} frames)")
 
     with torch.no_grad():
         for i, action_dir in enumerate(tqdm(action_dirs, desc=f"Predicting {split}")):
@@ -134,8 +134,16 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
                     # Load all frames in the range
                     all_frames = vr.get_batch(all_frame_indices).asnumpy()  # Shape: (T, H, W, C)
                     
-                    # Use all frames without downsampling (same as dataset class)
-                    selected_frames = all_frames
+                    # Intelligent temporal downsampling to exactly 16 frames for MViT (same as dataset class)
+                    if len(all_frames) > 16:
+                        # Use uniform sampling to get exactly 16 frames
+                        indices = np.linspace(0, len(all_frames) - 1, 16, dtype=int)
+                        selected_frames = [all_frames[i] for i in indices]
+                    else:
+                        # If we have 16 or fewer frames, use all and pad if necessary
+                        selected_frames = list(all_frames)
+                        while len(selected_frames) < 16:
+                            selected_frames.append(selected_frames[-1])  # Repeat last frame
                     
                     # Convert to tensor (exactly same as dataset class)
                     video = torch.from_numpy(np.stack(selected_frames))
