@@ -635,9 +635,15 @@ if __name__ == "__main__":
     
     print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
 
-    # Initialize learning rate scheduler (StepLR) - more predictable for imbalanced learning
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.5)
-    print(f"Using StepLR scheduler: step_size=4, gamma=0.5 (LR will drop 2x every 4 epochs)")
+    # Initialize learning rate scheduler - conservative plateau-based reduction
+    if USE_CURRICULUM:
+        # ReduceLROnPlateau monitors combined macro recall - only reduces when performance plateaus
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=4, min_lr=1e-5, verbose=True)
+        print(f"Using ReduceLROnPlateau scheduler: mode=max (combined macro recall), factor=0.7, patience=4, min_lr=1e-5")
+    else:
+        # Less aggressive StepLR for non-curriculum training
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+        print(f"Using StepLR scheduler: step_size=10, gamma=0.5 (single LR reduction at epoch 10)")
     
     # Early stopping variables
     best_val_loss = float('inf')
@@ -953,23 +959,48 @@ if __name__ == "__main__":
                 avg_val_loss = val_running_loss / current_batches_processed_val if current_batches_processed_val > 0 else 0.0
                 print(f"Validation Loss: {avg_val_loss:.4f}")
 
-                # Step the learning rate scheduler
-                scheduler.step()
-                
-                # Early stopping logic
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                    patience_counter = 0
-                    # Save best model checkpoint
-                    best_checkpoint = checkpoint.copy()
-                    best_checkpoint['best_val_loss'] = best_val_loss
-                    
-                    best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model_curriculum.pth")
-                    torch.save(best_checkpoint, best_model_path)
-                    print(f"New best model saved with validation loss: {best_val_loss:.4f}")
+                # Step the learning rate scheduler with appropriate metric
+                if USE_CURRICULUM:
+                    # ReduceLROnPlateau monitors combined macro recall (mode='max')
+                    scheduler.step(combined_macro_recall)
                 else:
-                    patience_counter += 1
-                    print(f"No improvement in validation loss. Patience: {patience_counter}/{early_stopping_patience}")
+                    # StepLR doesn't need a metric
+                    scheduler.step()
+                
+                # Early stopping logic - use combined macro recall for curriculum learning
+                if USE_CURRICULUM:
+                    # For curriculum learning, track best combined macro recall
+                    if 'best_combined_recall' not in locals():
+                        best_combined_recall = 0.0
+                    
+                    if combined_macro_recall > best_combined_recall:
+                        best_combined_recall = combined_macro_recall
+                        patience_counter = 0
+                        # Save best model checkpoint
+                        best_checkpoint = checkpoint.copy()
+                        best_checkpoint['best_combined_recall'] = best_combined_recall
+                        
+                        best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model_curriculum.pth")
+                        torch.save(best_checkpoint, best_model_path)
+                        print(f"New best model saved with combined macro recall: {best_combined_recall:.4f}")
+                    else:
+                        patience_counter += 1
+                        print(f"No improvement in combined macro recall. Patience: {patience_counter}/{early_stopping_patience}")
+                else:
+                    # For non-curriculum training, use validation loss
+                    if avg_val_loss < best_val_loss:
+                        best_val_loss = avg_val_loss
+                        patience_counter = 0
+                        # Save best model checkpoint
+                        best_checkpoint = checkpoint.copy()
+                        best_checkpoint['best_val_loss'] = best_val_loss
+                        
+                        best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model_curriculum.pth")
+                        torch.save(best_checkpoint, best_model_path)
+                        print(f"New best model saved with validation loss: {best_val_loss:.4f}")
+                    else:
+                        patience_counter += 1
+                        print(f"No improvement in validation loss. Patience: {patience_counter}/{early_stopping_patience}")
                     
                 if patience_counter >= early_stopping_patience:
                     print(f"Early stopping triggered after {epoch + 1} epochs")
