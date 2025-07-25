@@ -18,13 +18,15 @@ from transform import get_train_transforms, get_val_transforms # Import new tran
 from torchvision.models.video import MViT_V2_S_Weights # Needed to get model input size
 
 # Smart Rebalancing System imports
-from smart_rebalancer import SmartRebalancer, RebalancingConfig
+from smart_rebalancer import SmartRebalancer, RebalancingConfig, CurriculumConfig, CurriculumStage
 from rebalancing_integration import (
     extract_performance_metrics,
     create_rebalancer_from_dataset,
     log_rebalancing_status,
     update_focal_loss_from_rebalancer,
     get_mixup_params_from_rebalancer,
+    create_curriculum_dataloader,
+    update_curriculum_loss_functions,
     ACTION_CLASS_NAMES,
     SEVERITY_CLASS_NAMES
 )
@@ -222,6 +224,34 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
+def load_checkpoint(model, optimizer, scheduler, checkpoint_path, rebalancer=None):
+    """Load model checkpoint and resume training"""
+    print(f"Loading checkpoint from {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
+    
+    if 'model_state_dict' in checkpoint:
+        # New checkpoint format
+        model.load_state_dict(checkpoint['model_state_dict'])
+        if 'optimizer_state_dict' in checkpoint and optimizer is not None:
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'scheduler_state_dict' in checkpoint and scheduler is not None:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint.get('epoch', 0) + 1
+        best_val_loss = checkpoint.get('best_val_loss', float('inf'))
+        
+        # Load rebalancer state if available
+        if rebalancer is not None and 'rebalancer_state' in checkpoint:
+            rebalancer.load_state_dict(checkpoint['rebalancer_state'])
+            print("Loaded rebalancer state from checkpoint")
+    else:
+        # Legacy checkpoint (just model weights)
+        model.load_state_dict(checkpoint)
+        start_epoch = 0
+        best_val_loss = float('inf')
+    
+    print(f"Loaded checkpoint from epoch {start_epoch-1}, best val loss: {best_val_loss}")
+    return start_epoch, best_val_loss
+
 # 1. Hyperparameters
 # EPOCHS = 10
 # BATCH_SIZE = 4
@@ -268,6 +298,16 @@ if __name__ == "__main__":
     parser.add_argument('--min_class_recall', type=float, default=0.3, help='Minimum acceptable recall per class')
     parser.add_argument('--target_macro_recall', type=float, default=0.7, help='Target macro-averaged recall')
     parser.add_argument('--adaptation_rate', type=float, default=0.1, help='Rate of rebalancing adaptations')
+    
+    # Curriculum Learning arguments
+    parser.add_argument('--use_curriculum', action='store_true', help='Enable curriculum learning')
+    parser.add_argument('--curriculum_easy_epochs', type=int, default=8, help='Epochs for easy-only stage')
+    parser.add_argument('--curriculum_medium_epochs', type=int, default=6, help='Epochs for medium introduction')
+    parser.add_argument('--curriculum_full_epochs', type=int, default=6, help='Epochs for full curriculum')
+    
+    # Checkpoint and fine-tuning arguments
+    parser.add_argument('--load_checkpoint', type=str, help='Load model checkpoint to continue training')
+    parser.add_argument('--freeze_backbone', action='store_true', help='Freeze backbone during training')
 
     args = parser.parse_args()
 
@@ -300,6 +340,22 @@ if __name__ == "__main__":
         print(f"  Min Class Recall: {args.min_class_recall}")
         print(f"  Target Macro Recall: {args.target_macro_recall}")
         print(f"  Adaptation Rate: {args.adaptation_rate}")
+    
+    # Curriculum Learning configuration
+    USE_CURRICULUM = args.use_curriculum
+    print(f"Curriculum Learning: {'Enabled' if USE_CURRICULUM else 'Disabled'}")
+    if USE_CURRICULUM:
+        print(f"  Easy Stage Epochs: {args.curriculum_easy_epochs}")
+        print(f"  Medium Stage Epochs: {args.curriculum_medium_epochs}")
+        print(f"  Full Stage Epochs: {args.curriculum_full_epochs}")
+    
+    # Checkpoint loading
+    LOAD_CHECKPOINT = args.load_checkpoint
+    FREEZE_BACKBONE = args.freeze_backbone
+    if LOAD_CHECKPOINT:
+        print(f"Will load checkpoint from: {LOAD_CHECKPOINT}")
+    if FREEZE_BACKBONE:
+        print("Backbone will be frozen during training")
 
     # Hardcoded values for removed arguments
     DATA_FOLDER = "mvfouls"
@@ -528,12 +584,22 @@ if __name__ == "__main__":
             adaptation_rate=args.adaptation_rate
         )
         
+        # Initialize curriculum config if enabled
+        curriculum_config = None
+        if USE_CURRICULUM:
+            curriculum_config = CurriculumConfig(
+                easy_stage_epochs=args.curriculum_easy_epochs,
+                medium_stage_epochs=args.curriculum_medium_epochs,
+                full_stage_epochs=args.curriculum_full_epochs
+            )
+        
         rebalancer = create_rebalancer_from_dataset(
             train_dataset,
             config=config,
             save_dir="rebalancing_logs",
             excluded_action_classes=excluded_action_classes,
-            excluded_severity_classes=excluded_severity_classes
+            excluded_severity_classes=excluded_severity_classes,
+            curriculum_config=curriculum_config
         )
         print("Smart Rebalancing System initialized successfully!")
 
@@ -577,6 +643,13 @@ if __name__ == "__main__":
     best_val_loss = float('inf')
     patience_counter = 0
     early_stopping_patience = 20
+    start_epoch = 0
+
+    # Load checkpoint if specified
+    if LOAD_CHECKPOINT:
+        start_epoch, best_val_loss = load_checkpoint(
+            model, optimizer, scheduler, LOAD_CHECKPOINT, rebalancer
+        )
 
     print("Training setup complete. Starting training loop...")
 
@@ -586,7 +659,56 @@ if __name__ == "__main__":
     print(f"Models will be saved to: {MODEL_SAVE_DIR}/")
 
     # 4. Training Loop
-    for epoch in range(EPOCHS):
+    previous_stage = None
+    current_dataloader = None
+    
+    for epoch in range(start_epoch, start_epoch + EPOCHS):
+        # Handle curriculum learning stage transitions
+        current_stage = None
+        if USE_CURRICULUM and USE_SMART_REBALANCING and rebalancer is not None:
+            current_stage = rebalancer.get_current_curriculum_stage(epoch)
+            
+            # Check if we need to recreate the dataloader (stage change or first epoch)
+            if current_stage != previous_stage or current_dataloader is None:
+                print(f"\n=== Curriculum Stage Change: {current_stage.value} ===")
+                
+                # Create new dataloader with curriculum filtering
+                current_dataloader = create_curriculum_dataloader(
+                    train_dataset, rebalancer, epoch, BATCH_SIZE,
+                    collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True
+                )
+                
+                # Update loss functions with curriculum weights
+                if USE_FOCAL_LOSS:
+                    criterion_action, criterion_severity = update_curriculum_loss_functions(
+                        rebalancer, epoch, DEVICE, FocalLoss
+                    )
+                else:
+                    action_weights = rebalancer.get_curriculum_class_weights(epoch, 'action', DEVICE)
+                    severity_weights = rebalancer.get_curriculum_class_weights(epoch, 'severity', DEVICE)
+                    criterion_action = nn.CrossEntropyLoss(weight=action_weights)
+                    criterion_severity = nn.CrossEntropyLoss(weight=severity_weights)
+                
+                print(f"Updated dataloader and loss functions for stage: {current_stage.value}")
+                previous_stage = current_stage
+        else:
+            # Use original dataloader if curriculum learning is disabled
+            if current_dataloader is None:
+                current_dataloader = train_dataloader
+        
+        # Freeze backbone if in fine-tuning stage and flag is set
+        if (FREEZE_BACKBONE and USE_CURRICULUM and USE_SMART_REBALANCING and 
+            rebalancer is not None and current_stage == CurriculumStage.FINE_TUNING):
+            print("Freezing backbone for fine-tuning stage")
+            for param in model.model.parameters():  # MViT backbone
+                param.requires_grad = False
+            for param in model.shared_feature_head.parameters():
+                param.requires_grad = True
+            for param in model.action_head.parameters():
+                param.requires_grad = True
+            for param in model.severity_head.parameters():
+                param.requires_grad = True
+        
         model.train() # Set model to training mode
         running_loss = 0.0
         
@@ -597,7 +719,7 @@ if __name__ == "__main__":
             use_mixup, mixup_alpha = get_mixup_params_from_rebalancer(rebalancer, epoch)
         
         # Add tqdm for progress bar
-        tqdm_dataloader = tqdm(train_dataloader, desc=f"Epoch {epoch+1} Training")
+        tqdm_dataloader = tqdm(current_dataloader, desc=f"Epoch {epoch+1} Training")
         for i, (videos, action_labels, severity_labels, action_ids) in enumerate(tqdm_dataloader):
             # For testing, break after a specified number of batches if TEST_BATCHES > 0
             if TEST_BATCHES > 0 and i >= TEST_BATCHES:
@@ -679,10 +801,25 @@ if __name__ == "__main__":
         print(f"Epoch {epoch + 1} finished. Average Training Loss: {avg_train_loss:.4f}")
         print(f"Current Learning Rate: {scheduler.get_last_lr()[0]:.6f}")
 
-        # Save the model after each epoch
-        model_save_path = os.path.join(MODEL_SAVE_DIR, f"model_epoch_{epoch+1}.pth")
-        torch.save(model.state_dict(), model_save_path)
-        print(f"Model saved to {model_save_path}")
+        # Save comprehensive checkpoint
+        checkpoint = {
+            'epoch': epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'scheduler_state_dict': scheduler.state_dict(),
+            'best_val_loss': best_val_loss,
+            'curriculum_stage': current_stage.value if current_stage else None,
+            'rebalancer_state': rebalancer.get_state_dict() if rebalancer else None,
+            'training_args': {
+                'use_curriculum': USE_CURRICULUM,
+                'use_smart_rebalancing': USE_SMART_REBALANCING,
+                'freeze_backbone': FREEZE_BACKBONE
+            }
+        }
+        
+        checkpoint_path = os.path.join(MODEL_SAVE_DIR, f"checkpoint_epoch_{epoch+1}.pth")
+        torch.save(checkpoint, checkpoint_path)
+        print(f"Checkpoint saved to {checkpoint_path}")
 
         # 5. Evaluation Loop
         print("\nStarting validation...")
@@ -819,9 +956,12 @@ if __name__ == "__main__":
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
                     patience_counter = 0
-                    # Save best model
-                    best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model.pth")
-                    torch.save(model.state_dict(), best_model_path)
+                    # Save best model checkpoint
+                    best_checkpoint = checkpoint.copy()
+                    best_checkpoint['best_val_loss'] = best_val_loss
+                    
+                    best_model_path = os.path.join(MODEL_SAVE_DIR, "best_model_curriculum.pth")
+                    torch.save(best_checkpoint, best_model_path)
                     print(f"New best model saved with validation loss: {best_val_loss:.4f}")
                 else:
                     patience_counter += 1

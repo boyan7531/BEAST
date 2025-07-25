@@ -14,3 +14,8 @@ venv
 rebalancing_logs
 *.pth
 training.txt
+rebalancing_logs
+*.md
+cleaned_training_log.txt
+*.sh
+trained
