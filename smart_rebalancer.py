@@ -25,6 +25,13 @@ class RebalancingStrategy(Enum):
     OVERSAMPLING = "oversampling"
     UNDERSAMPLING = "undersampling"
 
+class CurriculumStage(Enum):
+    """Curriculum learning stages"""
+    EASY_ONLY = "easy_only"
+    MEDIUM_INTRODUCTION = "medium_introduction" 
+    FULL_CURRICULUM = "full_curriculum"
+    FINE_TUNING = "fine_tuning"
+
 @dataclass
 class PerformanceMetrics:
     """Container for performance metrics"""
@@ -37,6 +44,16 @@ class PerformanceMetrics:
     per_class_f1: Dict[int, float]
     loss: float
     task_type: str  # 'action' or 'severity'
+
+@dataclass
+class CurriculumConfig:
+    """Configuration for curriculum learning"""
+    easy_stage_epochs: int = 8
+    medium_stage_epochs: int = 6
+    full_stage_epochs: int = 6
+    hard_class_initial_weight: float = 0.05
+    hard_class_final_weight: float = 0.3
+    medium_class_weight: float = 0.7
 
 @dataclass
 class RebalancingConfig:
@@ -79,7 +96,8 @@ class SmartRebalancer:
                  config: Optional[RebalancingConfig] = None,
                  save_dir: str = "rebalancing_logs",
                  excluded_action_classes: set = None,
-                 excluded_severity_classes: set = None):
+                 excluded_severity_classes: set = None,
+                 curriculum_config: Optional[CurriculumConfig] = None):
         
         self.num_action_classes = num_action_classes
         self.num_severity_classes = num_severity_classes
@@ -89,6 +107,11 @@ class SmartRebalancer:
         # Store excluded classes
         self.excluded_action_classes = excluded_action_classes or set()
         self.excluded_severity_classes = excluded_severity_classes or set()
+        
+        # Curriculum learning configuration
+        self.curriculum_config = curriculum_config or CurriculumConfig()
+        self.current_stage = CurriculumStage.EASY_ONLY
+        self.stage_start_epoch = 0
         
         # Performance tracking
         self.action_metrics_history: List[PerformanceMetrics] = []
@@ -568,7 +591,7 @@ class SmartRebalancer:
                 'epoch': int(m.epoch),
                 'macro_recall': float(m.macro_recall),
                 'macro_f1': float(m.macro_f1),
-                'per_class_recall': {str(int(k)): float(v) for k, v in m.per_class_recall.items()}
+                'per_class_recall': {str(k): float(v) for k, v in m.per_class_recall.items()}
             } for m in recent_action
         ]
         
@@ -577,7 +600,7 @@ class SmartRebalancer:
                 'epoch': int(m.epoch),
                 'macro_recall': float(m.macro_recall),
                 'macro_f1': float(m.macro_f1),
-                'per_class_recall': {str(int(k)): float(v) for k, v in m.per_class_recall.items()}
+                'per_class_recall': {str(k): float(v) for k, v in m.per_class_recall.items()}
             } for m in recent_severity
         ]
         
@@ -643,3 +666,120 @@ class SmartRebalancer:
         }
         
         return recommendations
+    
+    def get_current_curriculum_stage(self, epoch: int) -> CurriculumStage:
+        """Determine current curriculum stage based on epoch"""
+        if epoch < self.curriculum_config.easy_stage_epochs:
+            return CurriculumStage.EASY_ONLY
+        elif epoch < (self.curriculum_config.easy_stage_epochs + 
+                      self.curriculum_config.medium_stage_epochs):
+            return CurriculumStage.MEDIUM_INTRODUCTION
+        elif epoch < (self.curriculum_config.easy_stage_epochs + 
+                      self.curriculum_config.medium_stage_epochs +
+                      self.curriculum_config.full_stage_epochs):
+            return CurriculumStage.FULL_CURRICULUM
+        else:
+            return CurriculumStage.FINE_TUNING
+    
+    def get_curriculum_class_weights(self, epoch: int, task_type: str, device: torch.device) -> torch.Tensor:
+        """Get class weights adjusted for curriculum stage"""
+        stage = self.get_current_curriculum_stage(epoch)
+        base_weights = self.get_class_weights(task_type, torch.device('cpu')).clone()
+        
+        if task_type == 'action':
+            hard_classes = [4, 7]  # Pushing, Dive
+            medium_classes = [2, 5, 6]  # High leg, Elbowing, Challenge
+        else:  # severity
+            hard_classes = [3]  # Red Card
+            medium_classes = [0]  # No Offence
+        
+        # Apply curriculum weighting
+        if stage == CurriculumStage.EASY_ONLY:
+            for class_id in hard_classes + medium_classes:
+                base_weights[class_id] = 0.01  # Nearly exclude
+        elif stage == CurriculumStage.MEDIUM_INTRODUCTION:
+            for class_id in hard_classes:
+                base_weights[class_id] = 0.01  # Still exclude hard
+            for class_id in medium_classes:
+                base_weights[class_id] *= self.curriculum_config.medium_class_weight
+        elif stage == CurriculumStage.FULL_CURRICULUM:
+            # Gradually increase hard class weights
+            stage_start = (self.curriculum_config.easy_stage_epochs + 
+                          self.curriculum_config.medium_stage_epochs)
+            progress = min(1.0, (epoch - stage_start) / max(1, self.curriculum_config.full_stage_epochs))
+            hard_weight = (self.curriculum_config.hard_class_initial_weight + 
+                          progress * (self.curriculum_config.hard_class_final_weight - 
+                                    self.curriculum_config.hard_class_initial_weight))
+            for class_id in hard_classes:
+                base_weights[class_id] *= hard_weight
+        # FINE_TUNING stage uses full weights
+        
+        return base_weights.to(device)
+    
+    def get_curriculum_excluded_classes(self, epoch: int) -> Tuple[set, set]:
+        """Get classes to exclude based on curriculum stage"""
+        stage = self.get_current_curriculum_stage(epoch)
+        
+        excluded_action_classes = set()
+        excluded_severity_classes = set()
+        
+        if stage == CurriculumStage.EASY_ONLY:
+            excluded_action_classes = {2, 4, 5, 6, 7}  # Keep only Tackling, Standing tackling, Holding
+            excluded_severity_classes = {0, 3}  # Keep only Offence+No Card, Offence+Yellow Card
+        elif stage == CurriculumStage.MEDIUM_INTRODUCTION:
+            excluded_action_classes = {4, 7}  # Only exclude hardest: Pushing, Dive
+            excluded_severity_classes = {3}   # Only exclude Red Card
+        # FULL_CURRICULUM and FINE_TUNING: no exclusions
+        
+        return excluded_action_classes, excluded_severity_classes
+    
+    def get_state_dict(self) -> Dict[str, Any]:
+        """Get rebalancer state for checkpointing"""
+        return {
+            'current_action_weights': self.current_action_weights.tolist(),
+            'current_severity_weights': self.current_severity_weights.tolist(),
+            'class_distributions': self.class_distributions,
+            'excluded_action_classes': list(self.excluded_action_classes),
+            'excluded_severity_classes': list(self.excluded_severity_classes),
+            'current_stage': self.current_stage.value,
+            'stage_start_epoch': self.stage_start_epoch,
+            'curriculum_config': {
+                'easy_stage_epochs': self.curriculum_config.easy_stage_epochs,
+                'medium_stage_epochs': self.curriculum_config.medium_stage_epochs,
+                'full_stage_epochs': self.curriculum_config.full_stage_epochs,
+                'hard_class_initial_weight': self.curriculum_config.hard_class_initial_weight,
+                'hard_class_final_weight': self.curriculum_config.hard_class_final_weight,
+                'medium_class_weight': self.curriculum_config.medium_class_weight
+            }
+        }
+    
+    def load_state_dict(self, state_dict: Dict[str, Any]):
+        """Load rebalancer state from checkpoint"""
+        try:
+            self.current_action_weights = torch.tensor(state_dict['current_action_weights'])
+            self.current_severity_weights = torch.tensor(state_dict['current_severity_weights'])
+            self.class_distributions = state_dict['class_distributions']
+            self.excluded_action_classes = set(state_dict['excluded_action_classes'])
+            self.excluded_severity_classes = set(state_dict['excluded_severity_classes'])
+            
+            if 'current_stage' in state_dict:
+                self.current_stage = CurriculumStage(state_dict['current_stage'])
+            if 'stage_start_epoch' in state_dict:
+                self.stage_start_epoch = state_dict['stage_start_epoch']
+            
+            if 'curriculum_config' in state_dict:
+                cc = state_dict['curriculum_config']
+                self.curriculum_config = CurriculumConfig(
+                    easy_stage_epochs=cc['easy_stage_epochs'],
+                    medium_stage_epochs=cc['medium_stage_epochs'],
+                    full_stage_epochs=cc['full_stage_epochs'],
+                    hard_class_initial_weight=cc['hard_class_initial_weight'],
+                    hard_class_final_weight=cc['hard_class_final_weight'],
+                    medium_class_weight=cc['medium_class_weight']
+                )
+            
+            self.logger.info("Loaded rebalancer state successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to load rebalancer state: {e}")
+            return False

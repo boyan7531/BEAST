@@ -10,3 +10,7 @@ data_distribution.txt
 .kiro\
 .kiro/
 .kiro
+rebalancing_logs
+*.md
+cleaned_training_log.txt
+*.sh
