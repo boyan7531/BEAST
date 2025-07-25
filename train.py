@@ -660,41 +660,45 @@ if __name__ == "__main__":
 
     # 4. Training Loop
     previous_stage = None
-    current_dataloader = None
     
     for epoch in range(start_epoch, start_epoch + EPOCHS):
-        # Handle curriculum learning stage transitions
+        # Handle curriculum learning - recreate dataloader every epoch for proper shuffling
         current_stage = None
         if USE_CURRICULUM and USE_SMART_REBALANCING and rebalancer is not None:
             current_stage = rebalancer.get_current_curriculum_stage(epoch)
             
-            # Check if we need to recreate the dataloader (stage change or first epoch)
-            if current_stage != previous_stage or current_dataloader is None:
+            # Always recreate dataloader for curriculum learning to ensure proper shuffling
+            stage_changed = current_stage != previous_stage
+            if stage_changed:
                 print(f"\n=== Curriculum Stage Change: {current_stage.value} ===")
-                
-                # Create new dataloader with curriculum filtering
-                current_dataloader = create_curriculum_dataloader(
-                    train_dataset, rebalancer, epoch, BATCH_SIZE,
-                    collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True
+            else:
+                print(f"\n=== Curriculum Epoch {epoch+1} (Stage: {current_stage.value}) ===")
+            
+            # Create new dataloader with curriculum filtering (every epoch for diversity)
+            current_dataloader = create_curriculum_dataloader(
+                train_dataset, rebalancer, epoch, BATCH_SIZE,
+                collate_fn=custom_collate_fn, num_workers=NUM_WORKERS, pin_memory=True
+            )
+            
+            # Update loss functions with curriculum weights
+            if USE_FOCAL_LOSS:
+                criterion_action, criterion_severity = update_curriculum_loss_functions(
+                    rebalancer, epoch, DEVICE, FocalLoss
                 )
-                
-                # Update loss functions with curriculum weights
-                if USE_FOCAL_LOSS:
-                    criterion_action, criterion_severity = update_curriculum_loss_functions(
-                        rebalancer, epoch, DEVICE, FocalLoss
-                    )
-                else:
-                    action_weights = rebalancer.get_curriculum_class_weights(epoch, 'action', DEVICE)
-                    severity_weights = rebalancer.get_curriculum_class_weights(epoch, 'severity', DEVICE)
-                    criterion_action = nn.CrossEntropyLoss(weight=action_weights)
-                    criterion_severity = nn.CrossEntropyLoss(weight=severity_weights)
-                
-                print(f"Updated dataloader and loss functions for stage: {current_stage.value}")
-                previous_stage = current_stage
+            else:
+                action_weights = rebalancer.get_curriculum_class_weights(epoch, 'action', DEVICE)
+                severity_weights = rebalancer.get_curriculum_class_weights(epoch, 'severity', DEVICE)
+                criterion_action = nn.CrossEntropyLoss(weight=action_weights)
+                criterion_severity = nn.CrossEntropyLoss(weight=severity_weights)
+            
+            if stage_changed:
+                print(f"Updated dataloader and loss functions for new stage: {current_stage.value}")
+            else:
+                print(f"Recreated dataloader for epoch diversity (stage: {current_stage.value})")
+            previous_stage = current_stage
         else:
             # Use original dataloader if curriculum learning is disabled
-            if current_dataloader is None:
-                current_dataloader = train_dataloader
+            current_dataloader = train_dataloader
         
         # Freeze backbone if in fine-tuning stage and flag is set
         if (FREEZE_BACKBONE and USE_CURRICULUM and USE_SMART_REBALANCING and 

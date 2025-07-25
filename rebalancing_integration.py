@@ -11,7 +11,7 @@ from typing import Dict, List, Any, Tuple
 from sklearn.metrics import precision_recall_fscore_support, accuracy_score
 from smart_rebalancer import SmartRebalancer, RebalancingConfig, CurriculumConfig, CurriculumStage
 from collections import Counter
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, SubsetRandomSampler, WeightedRandomSampler
 
 def extract_performance_metrics(all_labels: List[int], 
                                all_predictions: List[int],
@@ -302,12 +302,12 @@ SEVERITY_CLASS_NAMES = [
     "No Offence", "Offence + No Card", "Offence + Yellow Card", "Offence + Red Card"
 ]
 
-def filter_dataset_by_curriculum(dataset, excluded_action_classes: set, excluded_severity_classes: set):
-    """Filter dataset based on curriculum stage exclusions"""
+def get_curriculum_filtered_indices(dataset, excluded_action_classes: set, excluded_severity_classes: set):
+    """Get indices of samples that should be included based on curriculum stage exclusions"""
     if not excluded_action_classes and not excluded_severity_classes:
-        return dataset
+        return list(range(len(dataset.labels_action_list)))
     
-    # Create a copy of the dataset with filtered samples
+    # Get indices of samples to keep (don't modify original dataset)
     filtered_indices = []
     for i in range(len(dataset.labels_action_list)):
         action_label = dataset.labels_action_list[i]
@@ -327,32 +327,26 @@ def filter_dataset_by_curriculum(dataset, excluded_action_classes: set, excluded
         if keep_sample:
             filtered_indices.append(i)
     
-    # Create filtered dataset (modify in place for efficiency)
-    original_data_list = dataset.data_list.copy()
-    original_action_labels = dataset.labels_action_list.copy()
-    original_severity_labels = dataset.labels_severity_list.copy()
-    
-    dataset.data_list = [original_data_list[i] for i in filtered_indices]
-    dataset.labels_action_list = [original_action_labels[i] for i in filtered_indices]
-    dataset.labels_severity_list = [original_severity_labels[i] for i in filtered_indices]
-    dataset.length = len(dataset.data_list)
-    
-    return dataset
+    return filtered_indices
 
-def create_curriculum_sampling_weights(dataset, rebalancer: SmartRebalancer, epoch: int):
+def create_curriculum_sampling_weights(dataset, filtered_indices: list, rebalancer: SmartRebalancer, epoch: int):
     """Create sampling weights based on curriculum stage and rebalancer recommendations"""
     # Get current stage
     stage = rebalancer.get_current_curriculum_stage(epoch)
     
-    # Get severity labels for sampling weight calculation
-    all_severity_labels = torch.cat(dataset.labels_severity_list, dim=0).argmax(dim=1).cpu().numpy()
-    severity_counts = Counter(all_severity_labels)
-    total_samples = len(all_severity_labels)
+    # Get severity labels for sampling weight calculation (only for filtered indices)
+    filtered_severity_labels = []
+    for idx in filtered_indices:
+        severity_label = dataset.labels_severity_list[idx]
+        severity_class = torch.argmax(severity_label).item()
+        filtered_severity_labels.append(severity_class)
+    
+    severity_counts = Counter(filtered_severity_labels)
+    total_samples = len(filtered_severity_labels)
     
     sample_weights = []
     
-    for i in range(len(dataset)):
-        severity_class = all_severity_labels[i]
+    for severity_class in filtered_severity_labels:
         freq = severity_counts[severity_class] / total_samples
         
         # Base weight calculation
@@ -388,23 +382,46 @@ def create_curriculum_sampling_weights(dataset, rebalancer: SmartRebalancer, epo
 
 def create_curriculum_dataloader(dataset, rebalancer: SmartRebalancer, epoch: int, 
                                batch_size: int, collate_fn=None, **kwargs):
-    """Create dataloader with curriculum-based filtering and sampling"""
+    """Create dataloader with curriculum-based filtering and sampling using SubsetRandomSampler"""
+    
     # Get curriculum exclusions
     excluded_action, excluded_severity = rebalancer.get_curriculum_excluded_classes(epoch)
     
-    # Filter dataset if needed
-    if excluded_action or excluded_severity:
-        dataset = filter_dataset_by_curriculum(dataset, excluded_action, excluded_severity)
-        print(f"Curriculum stage: {rebalancer.get_current_curriculum_stage(epoch).value}")
-        print(f"Filtered dataset size: {len(dataset)} samples")
+    # Get filtered indices (don't modify original dataset)
+    filtered_indices = get_curriculum_filtered_indices(dataset, excluded_action, excluded_severity)
+    
+    print(f"Curriculum stage: {rebalancer.get_current_curriculum_stage(epoch).value}")
+    print(f"Original dataset size: {len(dataset)} samples")
+    print(f"Filtered dataset size: {len(filtered_indices)} samples")
+    if excluded_action:
         print(f"Excluded action classes: {sorted(excluded_action)}")
+    if excluded_severity:
         print(f"Excluded severity classes: {sorted(excluded_severity)}")
     
-    # Create sampling weights
-    sampling_weights = create_curriculum_sampling_weights(dataset, rebalancer, epoch)
-    sampler = torch.utils.data.WeightedRandomSampler(sampling_weights, len(sampling_weights), replacement=True)
+    # Create sampling weights for filtered indices
+    sampling_weights = create_curriculum_sampling_weights(dataset, filtered_indices, rebalancer, epoch)
     
-    return DataLoader(dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn, **kwargs)
+    # Create weighted sampler that samples from filtered indices
+    # The sampler will sample indices from 0 to len(filtered_indices)-1
+    # which correspond to positions in the filtered_indices list
+    sampler = WeightedRandomSampler(sampling_weights, len(sampling_weights), replacement=True)
+    
+    # Create a custom dataset wrapper that maps sampler indices to actual dataset indices
+    class CurriculumSubset:
+        def __init__(self, dataset, indices):
+            self.dataset = dataset
+            self.indices = indices
+        
+        def __getitem__(self, idx):
+            return self.dataset[self.indices[idx]]
+        
+        def __len__(self):
+            return len(self.indices)
+    
+    # Create subset dataset
+    subset_dataset = CurriculumSubset(dataset, filtered_indices)
+    
+    return DataLoader(subset_dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn, **kwargs)
 
 def update_curriculum_loss_functions(rebalancer: SmartRebalancer, epoch: int, 
                                    device: torch.device, focal_loss_class):
