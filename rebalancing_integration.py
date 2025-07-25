@@ -89,7 +89,10 @@ def create_weighted_sampler_from_rebalancer(rebalancer: SmartRebalancer,
             severity_class = all_severity_labels[i]
             freq = severity_counts[severity_class] / total_samples
             
-            if freq > 0.5:  # Dominant class
+            # Check if this is an excluded class (shouldn't happen in filtered dataset, but safety check)
+            if hasattr(rebalancer, 'excluded_severity_classes') and severity_class in rebalancer.excluded_severity_classes:
+                weight = 0.01  # Very low weight for excluded classes
+            elif freq > 0.5:  # Dominant class
                 weight = max(0.5, 1.0 / (freq ** 0.4))
             elif freq > 0.25:  # Major class
                 weight = min(1.5, 1.0 / (freq ** 0.6))
@@ -173,6 +176,12 @@ def log_rebalancing_status(rebalancer: SmartRebalancer,
     
     log_msg = f"\n=== Rebalancing Status - Epoch {epoch} ===\n"
     
+    # Show excluded classes
+    if hasattr(rebalancer, 'excluded_action_classes') and rebalancer.excluded_action_classes:
+        log_msg += f"Excluded action classes: {sorted(rebalancer.excluded_action_classes)}\n"
+    if hasattr(rebalancer, 'excluded_severity_classes') and rebalancer.excluded_severity_classes:
+        log_msg += f"Excluded severity classes: {sorted(rebalancer.excluded_severity_classes)}\n"
+    
     # Class weights
     log_msg += f"Action class weights: {[f'{w:.3f}' for w in recommendations['class_weights']['action']]}\n"
     log_msg += f"Severity class weights: {[f'{w:.3f}' for w in recommendations['class_weights']['severity']]}\n"
@@ -204,7 +213,9 @@ def log_rebalancing_status(rebalancer: SmartRebalancer,
 
 def create_rebalancer_from_dataset(train_dataset,
                                  config: RebalancingConfig = None,
-                                 save_dir: str = "rebalancing_logs") -> SmartRebalancer:
+                                 save_dir: str = "rebalancing_logs",
+                                 excluded_action_classes: set = None,
+                                 excluded_severity_classes: set = None) -> SmartRebalancer:
     """
     Create and initialize a SmartRebalancer from a training dataset
     
@@ -221,7 +232,9 @@ def create_rebalancer_from_dataset(train_dataset,
         num_action_classes=8,
         num_severity_classes=4,
         config=config,
-        save_dir=save_dir
+        save_dir=save_dir,
+        excluded_action_classes=excluded_action_classes,
+        excluded_severity_classes=excluded_severity_classes
     )
     
     # Initialize with dataset distributions

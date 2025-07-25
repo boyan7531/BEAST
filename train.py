@@ -531,7 +531,9 @@ if __name__ == "__main__":
         rebalancer = create_rebalancer_from_dataset(
             train_dataset,
             config=config,
-            save_dir="rebalancing_logs"
+            save_dir="rebalancing_logs",
+            excluded_action_classes=excluded_action_classes,
+            excluded_severity_classes=excluded_severity_classes
         )
         print("Smart Rebalancing System initialized successfully!")
 

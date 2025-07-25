@@ -77,12 +77,18 @@ class SmartRebalancer:
                  num_action_classes: int = 8,
                  num_severity_classes: int = 4,
                  config: Optional[RebalancingConfig] = None,
-                 save_dir: str = "rebalancing_logs"):
+                 save_dir: str = "rebalancing_logs",
+                 excluded_action_classes: set = None,
+                 excluded_severity_classes: set = None):
         
         self.num_action_classes = num_action_classes
         self.num_severity_classes = num_severity_classes
         self.config = config or RebalancingConfig()
         self.save_dir = save_dir
+        
+        # Store excluded classes
+        self.excluded_action_classes = excluded_action_classes or set()
+        self.excluded_severity_classes = excluded_severity_classes or set()
         
         # Performance tracking
         self.action_metrics_history: List[PerformanceMetrics] = []
@@ -106,6 +112,10 @@ class SmartRebalancer:
         os.makedirs(save_dir, exist_ok=True)
         
         self.logger.info("SmartRebalancer initialized")
+        if self.excluded_action_classes:
+            self.logger.info(f"Excluded action classes: {sorted(self.excluded_action_classes)}")
+        if self.excluded_severity_classes:
+            self.logger.info(f"Excluded severity classes: {sorted(self.excluded_severity_classes)}")
     
     def _setup_logging(self):
         """Setup logging for the rebalancer"""
@@ -163,6 +173,11 @@ class SmartRebalancer:
         # Action weights
         action_freqs = self.class_distributions['action']['frequencies']
         for i in range(self.num_action_classes):
+            # Set minimal weight for excluded classes
+            if i in self.excluded_action_classes:
+                self.current_action_weights[i] = 0.01  # Very small weight for excluded classes
+                continue
+                
             freq = action_freqs[i]
             if freq > 0:
                 if freq > 0.4:  # Very dominant classes
@@ -181,6 +196,11 @@ class SmartRebalancer:
         # Severity weights (more balanced approach)
         severity_freqs = self.class_distributions['severity']['frequencies']
         for i in range(self.num_severity_classes):
+            # Set minimal weight for excluded classes
+            if i in self.excluded_severity_classes:
+                self.current_severity_weights[i] = 0.01  # Very small weight for excluded classes
+                continue
+                
             freq = severity_freqs[i]
             if freq > 0:
                 if freq > 0.5:  # Dominant class (Offence + No Card: 56.19%)
@@ -293,11 +313,14 @@ class SmartRebalancer:
             f1_trend = 'stable'
             loss_trend = 'stable'
         
-        # Identify problematic classes
+        # Identify problematic classes (excluding already excluded classes)
         latest_metrics = recent_metrics[-1]
+        excluded_classes = (self.excluded_action_classes if task_type == 'action' 
+                          else self.excluded_severity_classes)
+        
         problematic_classes = [
             class_id for class_id, recall in latest_metrics.per_class_recall.items()
-            if recall < self.config.min_class_recall
+            if recall < self.config.min_class_recall and class_id not in excluded_classes
         ]
         
         return {
@@ -322,7 +345,18 @@ class SmartRebalancer:
         # Identify classes that need adjustment
         problematic_classes = trend_analysis['problematic_classes']
         
+        # Get excluded classes for this task
+        excluded_classes = (self.excluded_action_classes if task_type == 'action' 
+                          else self.excluded_severity_classes)
+        
         for class_id in problematic_classes:
+            # Skip excluded classes - don't try to improve their performance
+            if class_id in excluded_classes:
+                self.logger.info(
+                    f"Skipping weight adjustment for excluded {task_type} class {class_id}"
+                )
+                continue
+                
             current_recall = performance.per_class_recall.get(class_id, 0.0)
             
             if current_recall < self.config.min_class_recall:
@@ -343,7 +377,14 @@ class SmartRebalancer:
         
         # Reduce weights for overperforming classes if overall performance is good
         if performance.macro_recall > self.config.target_macro_recall:
+            excluded_classes = (self.excluded_action_classes if task_type == 'action' 
+                              else self.excluded_severity_classes)
+            
             for class_id, recall in performance.per_class_recall.items():
+                # Skip excluded classes
+                if class_id in excluded_classes:
+                    continue
+                    
                 if recall > 0.9:  # Very high recall
                     adjustment_factor = 1.0 - self.config.adaptation_rate * 0.5
                     new_weight = current_weights[class_id] * adjustment_factor
@@ -379,9 +420,14 @@ class SmartRebalancer:
             freq = severity_freqs[class_id]
             recall = severity_performance.get(int(class_id), 0.0)  # Ensure int key
             
+            # Handle excluded classes with minimal sampling weight
+            if class_id in self.excluded_severity_classes:
+                sampling_multipliers[class_id] = 0.01  # Very low sampling weight
+                continue
+            
             # Base weight from frequency - handle zero frequency case
-            if freq == 0.0:  # Excluded class
-                base_weight = 1.0  # Default weight for excluded classes
+            if freq == 0.0:  # Class not present in filtered dataset
+                base_weight = 1.0  # Default weight
             elif freq > 0.5:  # Dominant class
                 base_weight = max(0.5, 1.0 / (freq ** 0.4))
             elif freq > 0.25:  # Major class
@@ -391,7 +437,7 @@ class SmartRebalancer:
             else:  # Minority class (Red Card)
                 base_weight = min(8.0, max(4.0, 1.0 / (freq ** 0.95)))
             
-            # Adjust based on performance
+            # Adjust based on performance (only for non-excluded classes)
             if recall < self.config.min_class_recall:
                 performance_multiplier = 1.0 + (self.config.min_class_recall - recall)
             else:
@@ -497,6 +543,8 @@ class SmartRebalancer:
             'action_weights': self.current_action_weights.tolist(),
             'severity_weights': self.current_severity_weights.tolist(),
             'class_distributions': self.class_distributions,
+            'excluded_action_classes': list(self.excluded_action_classes),
+            'excluded_severity_classes': list(self.excluded_severity_classes),
             'config': {
                 'min_class_recall': self.config.min_class_recall,
                 'target_macro_recall': self.config.target_macro_recall,
@@ -555,6 +603,12 @@ class SmartRebalancer:
             self.current_action_weights = torch.tensor(state['action_weights'])
             self.current_severity_weights = torch.tensor(state['severity_weights'])
             self.class_distributions = state['class_distributions']
+            
+            # Load excluded classes if available
+            if 'excluded_action_classes' in state:
+                self.excluded_action_classes = set(state['excluded_action_classes'])
+            if 'excluded_severity_classes' in state:
+                self.excluded_severity_classes = set(state['excluded_severity_classes'])
             
             self.logger.info(f"Loaded rebalancer state from epoch {epoch}")
             return True
