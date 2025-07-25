@@ -89,17 +89,12 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
         "Actions": {}
     }
 
-    # Calculate frame sampling parameters
-    original_fps = 25
-    target_fps = 17
+    # Use all frames without downsampling
     duration_frames = end_frame - start_frame + 1
-    duration_seconds = duration_frames / original_fps
-    desired_frames = duration_seconds * target_fps
-    factor = duration_frames / desired_frames
 
     print(f"Frame sampling config: start={start_frame}, end={end_frame}")
-    print(f"Duration: {duration_frames} frames, Factor: {factor:.4f}")
-    print(f"Target FPS: {target_fps}, Expected output frames: ~{desired_frames:.1f}")
+    print(f"Duration: {duration_frames} frames (using all frames without downsampling)")
+    print(f"Output frames: {duration_frames}")
 
     with torch.no_grad():
         for i, action_dir in enumerate(tqdm(action_dirs, desc=f"Predicting {split}")):
@@ -139,22 +134,11 @@ def predict_unannotated_dataset(model_path, data_folder="mvfouls", split="challe
                     # Load all frames in the range
                     all_frames = vr.get_batch(all_frame_indices).asnumpy()  # Shape: (T, H, W, C)
                     
-                    # Apply factor-based downsampling as in the original paper (same as dataset class)
-                    selected_frames = []
-                    for j in range(len(all_frames)):
-                        if j % factor < 1:
-                            selected_frames.append(all_frames[j])
-                    
-                    # Fallback: if no frames selected, take the first frame
-                    if not selected_frames:
-                        selected_frames = [all_frames[0]]
+                    # Use all frames without downsampling (same as dataset class)
+                    selected_frames = all_frames
                     
                     # Convert to tensor (exactly same as dataset class)
-                    if selected_frames:
-                        video = torch.from_numpy(np.stack(selected_frames))
-                    else:
-                        # This shouldn't happen due to our fallback above, but just in case
-                        video = torch.from_numpy(all_frames[:1])
+                    video = torch.from_numpy(np.stack(selected_frames))
                     
                     # Apply transforms (same as dataset class)
                     if transform:

@@ -15,17 +15,12 @@ class MVFoulsDataset(Dataset):
         self.transform_model = transform_model
         self.target_fps = target_fps
         
-        # Calculate self.factor as in the original paper
-        # Assuming original video fps = 25 (common for soccer videos)
-        original_fps = 25
+        # Use all frames without downsampling
         duration_frames = end_frame - start_frame + 1  # +1 for inclusive range (63 to 86 = 24 frames)
-        duration_seconds = duration_frames / original_fps
-        desired_frames = duration_seconds * target_fps
-        self.factor = duration_frames / desired_frames
         
         print(f"Frame sampling config: start={start_frame}, end={end_frame}")
-        print(f"Duration: {duration_frames} frames, Factor: {self.factor:.4f}")
-        print(f"Target FPS: {target_fps}, Expected output frames: ~{desired_frames:.1f}")
+        print(f"Duration: {duration_frames} frames (using all frames without downsampling)")
+        print(f"Output frames: {duration_frames}")
         self.labels_action_list, self.labels_severity_list, self.useless_actions = label_to_numerical(folder_path, split)
         self.clip_paths_dict = load_clips(folder_path, split, self.useless_actions)
         self.length = len(self.labels_action_list)
@@ -61,18 +56,11 @@ class MVFoulsDataset(Dataset):
             all_frame_indices = list(range(self.start_frame, self.end_frame + 1))  # 63 to 86 inclusive = 24 frames
             all_frames = vr.get_batch(all_frame_indices).asnumpy()
             
-            # Apply factor-based downsampling as in the original paper
-            selected_frames = []
-            for j in range(len(all_frames)):
-                if j % self.factor < 1:
-                    selected_frames.append(all_frames[j])
+            # Use all frames without downsampling
+            selected_frames = all_frames
             
             # Convert to tensor
-            if selected_frames:
-                video = torch.from_numpy(np.stack(selected_frames))
-            else:
-                # Fallback: if no frames selected, take the first frame
-                video = torch.from_numpy(all_frames[:1])
+            video = torch.from_numpy(np.stack(selected_frames))
             
             video = self.transform_model(video) # Apply the passed-in transform
             
