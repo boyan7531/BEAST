@@ -638,7 +638,7 @@ if __name__ == "__main__":
     # Initialize learning rate scheduler - conservative plateau-based reduction
     if USE_CURRICULUM:
         # ReduceLROnPlateau monitors combined macro recall - only reduces when performance plateaus
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=4, min_lr=1e-5, verbose=True)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=4, min_lr=1e-5)
         print(f"Using ReduceLROnPlateau scheduler: mode=max (combined macro recall), factor=0.7, patience=4, min_lr=1e-5")
     else:
         # Less aggressive StepLR for non-curriculum training
