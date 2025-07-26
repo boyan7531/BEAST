@@ -650,7 +650,7 @@ if __name__ == "__main__":
         {'params': severity_params, 'lr': LEARNING_RATE * 1}  # same learning rate 
     ])
     
-    print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
+    print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE}")
 
     # Initialize learning rate scheduler - conservative plateau-based reduction
     if USE_CURRICULUM:
@@ -787,30 +787,12 @@ if __name__ == "__main__":
                 with torch.amp.autocast(device_type='cuda'):
                     action_logits, severity_logits = model(videos)
 
-                    # Calculate loss with DYNAMIC weighting based on performance
+                    # Calculate loss with equal weighting for both tasks
                     loss_action = criterion_action(action_logits, action_labels)
                     loss_severity = criterion_severity(severity_logits, severity_labels)
                     
-                    # ULTRA-AGGRESSIVE dynamic loss weighting for 45%+ target with safety checks
-                    if epoch < 3:
-                        # Very early epochs: extreme severity focus
-                        severity_weight = 3.0
-                    elif epoch < 8:
-                        # Early-mid epochs: strong severity focus  
-                        severity_weight = 2.5
-                    elif epoch < 15:
-                        # Mid epochs: balanced but severity-leaning
-                        severity_weight = 1.8
-                    else:
-                        # Later epochs: slight severity preference
-                        severity_weight = 1.4
-                    
-                    # Safety mechanism: if validation loss explodes, reduce severity weight
-                    if 'prev_val_loss' in locals() and val_loss > prev_val_loss * 1.5:
-                        severity_weight = min(severity_weight, 1.2)
-                        print(f"Safety: Reduced severity weight to {severity_weight} due to loss spike")
-                    
-                    total_loss = loss_action + (severity_weight * loss_severity)
+                    # Equal contribution from both tasks (1x weight each)
+                    total_loss = loss_action + loss_severity
 
             # Normalize loss to account for accumulation
             total_loss = total_loss / ACCUMULATION_STEPS
