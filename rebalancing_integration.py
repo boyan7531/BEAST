@@ -424,11 +424,15 @@ def create_curriculum_dataloader(dataset, rebalancer: SmartRebalancer, epoch: in
     return DataLoader(subset_dataset, batch_size=batch_size, sampler=sampler, collate_fn=collate_fn, **kwargs)
 
 def update_curriculum_loss_functions(rebalancer: SmartRebalancer, epoch: int, 
-                                   device: torch.device, focal_loss_class):
+                                   device: torch.device, focal_loss_class, use_class_weights: bool = True):
     """Update loss functions based on curriculum stage"""
-    # Get curriculum-adjusted weights
-    action_weights = rebalancer.get_curriculum_class_weights(epoch, 'action', device)
-    severity_weights = rebalancer.get_curriculum_class_weights(epoch, 'severity', device)
+    # Get curriculum-adjusted weights if enabled
+    if use_class_weights:
+        action_weights = rebalancer.get_curriculum_class_weights(epoch, 'action', device)
+        severity_weights = rebalancer.get_curriculum_class_weights(epoch, 'severity', device)
+    else:
+        action_weights = None
+        severity_weights = None
     
     # Get focal loss parameters
     action_focal_params = rebalancer.get_focal_loss_params('action')

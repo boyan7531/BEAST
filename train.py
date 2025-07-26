@@ -299,6 +299,9 @@ if __name__ == "__main__":
     parser.add_argument('--target_macro_recall', type=float, default=0.7, help='Target macro-averaged recall')
     parser.add_argument('--adaptation_rate', type=float, default=0.1, help='Rate of rebalancing adaptations')
     
+    # Class weights argument
+    parser.add_argument('--use_class_weights', action='store_true', help='Use class weights in loss functions')
+    
     # Curriculum Learning arguments
     parser.add_argument('--use_curriculum', action='store_true', help='Enable curriculum learning')
     parser.add_argument('--curriculum_easy_epochs', type=int, default=8, help='Epochs for easy-only stage')
@@ -340,6 +343,10 @@ if __name__ == "__main__":
         print(f"  Min Class Recall: {args.min_class_recall}")
         print(f"  Target Macro Recall: {args.target_macro_recall}")
         print(f"  Adaptation Rate: {args.adaptation_rate}")
+    
+    # Class weights configuration
+    USE_CLASS_WEIGHTS = args.use_class_weights
+    print(f"Class Weights: {'Enabled' if USE_CLASS_WEIGHTS else 'Disabled'}")
     
     # Curriculum Learning configuration
     USE_CURRICULUM = args.use_curriculum
@@ -613,13 +620,23 @@ if __name__ == "__main__":
         severity_alpha = torch.tensor([2.2, 0.85, 1.2, 3.0], device=DEVICE)  # Boost No Offence significantly, reduce Yellow Card dominance
         
         # Initialize with ultra-aggressive values (will be updated dynamically)
-        criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
-        criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-        print(f"Using CONSERVATIVE Focal Loss for stable 45%+: Action[Pushing=1.8, Dive=2.0], Severity[No Offence=1.6, Yellow=1.5, Red=2.2]")
+        if USE_CLASS_WEIGHTS:
+            criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
+            criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
+            print(f"Using CONSERVATIVE Focal Loss with class weights for stable 45%+: Action[Pushing=1.8, Dive=2.0], Severity[No Offence=1.6, Yellow=1.5, Red=2.2]")
+        else:
+            criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=None, label_smoothing=0.05)
+            criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=None, label_smoothing=0.08)
+            print(f"Using CONSERVATIVE Focal Loss without class weights")
     else:
-        criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
-        criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
-        print("Using CrossEntropyLoss with per-class weights.")
+        if USE_CLASS_WEIGHTS:
+            criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
+            criterion_severity = nn.CrossEntropyLoss(weight=severity_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
+            print("Using CrossEntropyLoss with per-class weights.")
+        else:
+            criterion_action = nn.CrossEntropyLoss(weight=None)
+            criterion_severity = nn.CrossEntropyLoss(weight=None)
+            print("Using CrossEntropyLoss without class weights.")
 
     
     # Initialize optimizer with TARGETED learning rates for severity-focused training
@@ -630,7 +647,7 @@ if __name__ == "__main__":
     
     optimizer = optim.Adam([
         {'params': other_params, 'lr': LEARNING_RATE},
-        {'params': severity_params, 'lr': LEARNING_RATE * 1.5}  # 50% higher LR for severity head
+        {'params': severity_params, 'lr': LEARNING_RATE * 1}  # same learning rate 
     ])
     
     print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE * 1.5}")
@@ -689,13 +706,17 @@ if __name__ == "__main__":
             # Update loss functions with curriculum weights
             if USE_FOCAL_LOSS:
                 criterion_action, criterion_severity = update_curriculum_loss_functions(
-                    rebalancer, epoch, DEVICE, FocalLoss
+                    rebalancer, epoch, DEVICE, FocalLoss, USE_CLASS_WEIGHTS
                 )
             else:
-                action_weights = rebalancer.get_curriculum_class_weights(epoch, 'action', DEVICE)
-                severity_weights = rebalancer.get_curriculum_class_weights(epoch, 'severity', DEVICE)
-                criterion_action = nn.CrossEntropyLoss(weight=action_weights)
-                criterion_severity = nn.CrossEntropyLoss(weight=severity_weights)
+                if USE_CLASS_WEIGHTS:
+                    action_weights = rebalancer.get_curriculum_class_weights(epoch, 'action', DEVICE)
+                    severity_weights = rebalancer.get_curriculum_class_weights(epoch, 'severity', DEVICE)
+                    criterion_action = nn.CrossEntropyLoss(weight=action_weights)
+                    criterion_severity = nn.CrossEntropyLoss(weight=severity_weights)
+                else:
+                    criterion_action = nn.CrossEntropyLoss(weight=None)
+                    criterion_severity = nn.CrossEntropyLoss(weight=None)
             
             if stage_changed:
                 print(f"Updated dataloader and loss functions for new stage: {current_stage.value}")
@@ -933,7 +954,7 @@ if __name__ == "__main__":
                     log_rebalancing_status(rebalancer, epoch + 1)
                     
                     # Update loss functions based on rebalancer recommendations if using focal loss
-                    if USE_FOCAL_LOSS:
+                    if USE_FOCAL_LOSS and USE_CLASS_WEIGHTS:
                         criterion_action = update_focal_loss_from_rebalancer(
                             rebalancer, 'action', DEVICE, FocalLoss
                         )
@@ -941,6 +962,23 @@ if __name__ == "__main__":
                             rebalancer, 'severity', DEVICE, FocalLoss
                         )
                         print("Updated loss functions based on rebalancer recommendations")
+                    elif USE_FOCAL_LOSS and not USE_CLASS_WEIGHTS:
+                        # Update focal loss without class weights
+                        focal_params_action = rebalancer.get_focal_loss_params('action')
+                        focal_params_severity = rebalancer.get_focal_loss_params('severity')
+                        criterion_action = FocalLoss(
+                            gamma=focal_params_action['gamma'],
+                            alpha=focal_params_action.get('alpha'),
+                            weight=None,
+                            label_smoothing=focal_params_action['label_smoothing']
+                        )
+                        criterion_severity = FocalLoss(
+                            gamma=focal_params_severity['gamma'],
+                            alpha=focal_params_severity.get('alpha'),
+                            weight=None,
+                            label_smoothing=focal_params_severity['label_smoothing']
+                        )
+                        print("Updated focal loss functions without class weights based on rebalancer recommendations")
                 print(f"  Macro F1-score: {severity_f1:.4f}")
 
                 # Per-class severity metrics to monitor overfitting
