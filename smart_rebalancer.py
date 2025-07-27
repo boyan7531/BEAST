@@ -504,17 +504,13 @@ class SmartRebalancer:
         
         latest_performance = history[-1]
         
-        # Fixed gamma for severity, adaptive for action
-        if task_type == 'severity':
-            gamma = 1.5  # Fixed gamma for severity
+        # Adaptive gamma based on performance for both tasks
+        if latest_performance.macro_recall < 0.5:
+            gamma = 2.0
+        elif latest_performance.macro_recall < 0.7:
+            gamma = 1.8
         else:
-            # Adaptive gamma based on performance for action
-            if latest_performance.macro_recall < 0.5:
-                gamma = 2.0
-            elif latest_performance.macro_recall < 0.7:
-                gamma = 1.8
-            else:
-                gamma = 1.5
+            gamma = 1.5
         
         # Adaptive label smoothing
         if latest_performance.macro_recall > 0.8:
