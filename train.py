@@ -619,15 +619,15 @@ if __name__ == "__main__":
         action_alpha = torch.tensor([1.0, 0.8, 2.5, 2.0, 2.5, 2.0, 2.0, 2.5], device=DEVICE)  # Boost High leg, Holding, Challenge heavily
         severity_alpha = torch.tensor([2.2, 0.85, 1.2, 3.0], device=DEVICE)  # Boost No Offence significantly, reduce Yellow Card dominance
         
-        # Initialize with ultra-aggressive values (will be updated dynamically)
+        # Initialize with conservative values (will be updated dynamically)
         if USE_CLASS_WEIGHTS:
             criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
-            criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-            print(f"Using CONSERVATIVE Focal Loss with class weights for stable 45%+: Action[Pushing=1.8, Dive=2.0], Severity[No Offence=1.6, Yellow=1.5, Red=2.2]")
+            criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
+            print(f"Using CONSERVATIVE Focal Loss with class weights: Action[gamma=1.2], Severity[gamma=1.5]")
         else:
             criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=None, label_smoothing=0.05)
-            criterion_severity = FocalLoss(gamma=2.8, alpha=severity_alpha, weight=None, label_smoothing=0.08)
-            print(f"Using CONSERVATIVE Focal Loss without class weights")
+            criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=None, label_smoothing=0.08)
+            print(f"Using CONSERVATIVE Focal Loss without class weights: Action[gamma=1.2], Severity[gamma=1.5]")
     else:
         if USE_CLASS_WEIGHTS:
             criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss

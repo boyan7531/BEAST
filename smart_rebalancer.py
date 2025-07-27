@@ -488,7 +488,7 @@ class SmartRebalancer:
         if not hasattr(self, f'{task_type}_metrics_history'):
             # Default parameters
             return {
-                'gamma': 2.0 if task_type == 'severity' else 1.5,
+                'gamma': 1.5 if task_type == 'severity' else 1.5,
                 'alpha': None,
                 'label_smoothing': 0.1 if task_type == 'severity' else 0.05
             }
@@ -497,20 +497,24 @@ class SmartRebalancer:
         
         if not history:
             return {
-                'gamma': 2.0 if task_type == 'severity' else 1.5,
+                'gamma': 1.5 if task_type == 'severity' else 1.5,
                 'alpha': None,
                 'label_smoothing': 0.1 if task_type == 'severity' else 0.05
             }
         
         latest_performance = history[-1]
         
-        # Adaptive gamma based on performance
-        if latest_performance.macro_recall < 0.5:
-            gamma = 3.0 if task_type == 'severity' else 2.0
-        elif latest_performance.macro_recall < 0.7:
-            gamma = 2.5 if task_type == 'severity' else 1.8
+        # Fixed gamma for severity, adaptive for action
+        if task_type == 'severity':
+            gamma = 1.5  # Fixed gamma for severity
         else:
-            gamma = 2.0 if task_type == 'severity' else 1.5
+            # Adaptive gamma based on performance for action
+            if latest_performance.macro_recall < 0.5:
+                gamma = 2.0
+            elif latest_performance.macro_recall < 0.7:
+                gamma = 1.8
+            else:
+                gamma = 1.5
         
         # Adaptive label smoothing
         if latest_performance.macro_recall > 0.8:
