@@ -621,13 +621,13 @@ if __name__ == "__main__":
         
         # Initialize with conservative values (will be updated dynamically)
         if USE_CLASS_WEIGHTS:
-            criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.05)
-            criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.08)
-            print(f"Using CONSERVATIVE Focal Loss with class weights: Action[gamma=1.2], Severity[gamma=1.5]")
+            criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=action_class_weights, label_smoothing=0.0)
+            criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=severity_class_weights, label_smoothing=0.0)
+            print(f"Using CONSERVATIVE Focal Loss with class weights (no label smoothing): Action[gamma=1.2], Severity[gamma=1.5]")
         else:
-            criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=None, label_smoothing=0.05)
-            criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=None, label_smoothing=0.08)
-            print(f"Using CONSERVATIVE Focal Loss without class weights: Action[gamma=1.2], Severity[gamma=1.5]")
+            criterion_action = FocalLoss(gamma=1.2, alpha=action_alpha, weight=None, label_smoothing=0.0)
+            criterion_severity = FocalLoss(gamma=1.5, alpha=severity_alpha, weight=None, label_smoothing=0.0)
+            print(f"Using CONSERVATIVE Focal Loss without class weights (no label smoothing): Action[gamma=1.2], Severity[gamma=1.5]")
     else:
         if USE_CLASS_WEIGHTS:
             criterion_action = nn.CrossEntropyLoss(weight=action_class_weights) # Also pass weights to CrossEntropyLoss if not using Focal Loss
@@ -652,15 +652,15 @@ if __name__ == "__main__":
     
     print(f"Using targeted learning rates: Base={LEARNING_RATE}, Severity Head={LEARNING_RATE}")
 
-    # Initialize learning rate scheduler - conservative plateau-based reduction
+    # Initialize learning rate scheduler - more frequent reductions for better convergence
     if USE_CURRICULUM:
         # ReduceLROnPlateau monitors combined macro recall - only reduces when performance plateaus
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=4, min_lr=1e-5)
-        print(f"Using ReduceLROnPlateau scheduler: mode=max (combined macro recall), factor=0.7, patience=4, min_lr=1e-5")
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.7, patience=3, min_lr=1e-6)
+        print(f"Using ReduceLROnPlateau scheduler: mode=max (combined macro recall), factor=0.7, patience=3, min_lr=1e-6")
     else:
-        # Less aggressive StepLR for non-curriculum training
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
-        print(f"Using StepLR scheduler: step_size=10, gamma=0.5 (single LR reduction at epoch 10)")
+        # More frequent StepLR reductions for better convergence
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=4, gamma=0.7)
+        print(f"Using StepLR scheduler: step_size=4, gamma=0.7 (LR reductions at epochs 4, 8, 12, etc.)")
     
     # Early stopping variables
     best_val_loss = float('inf')

@@ -490,7 +490,7 @@ class SmartRebalancer:
             return {
                 'gamma': 1.5 if task_type == 'severity' else 1.5,
                 'alpha': None,
-                'label_smoothing': 0.1 if task_type == 'severity' else 0.05
+                'label_smoothing': 0.0
             }
         
         history = getattr(self, f'{task_type}_metrics_history')
@@ -499,7 +499,7 @@ class SmartRebalancer:
             return {
                 'gamma': 1.5 if task_type == 'severity' else 1.5,
                 'alpha': None,
-                'label_smoothing': 0.1 if task_type == 'severity' else 0.05
+                'label_smoothing': 0.0
             }
         
         latest_performance = history[-1]
@@ -512,16 +512,10 @@ class SmartRebalancer:
         else:
             gamma = 1.5
         
-        # Adaptive label smoothing
-        if latest_performance.macro_recall > 0.8:
-            label_smoothing = 0.15 if task_type == 'severity' else 0.08
-        else:
-            label_smoothing = 0.1 if task_type == 'severity' else 0.05
-        
         return {
             'gamma': gamma,
             'alpha': None,  # Will use class weights instead
-            'label_smoothing': label_smoothing
+            'label_smoothing': 0.0  # Label smoothing disabled
         }
     
     def should_use_mixup(self, epoch: int) -> Tuple[bool, float]:
