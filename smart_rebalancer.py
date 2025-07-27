@@ -527,22 +527,8 @@ class SmartRebalancer:
     def should_use_mixup(self, epoch: int) -> Tuple[bool, float]:
         """Determine if mixup should be used and with what alpha"""
         
-        if not self.severity_metrics_history:
-            return True, 0.2  # Default
-        
-        latest_severity = self.severity_metrics_history[-1]
-        
-        # Use mixup more aggressively for underperforming minority classes
-        min_recall = min(latest_severity.per_class_recall.values())
-        
-        if min_recall < 0.3:
-            return True, 0.4  # Strong mixup
-        elif min_recall < 0.5:
-            return True, 0.3  # Moderate mixup
-        elif min_recall < 0.7:
-            return True, 0.2  # Light mixup
-        else:
-            return False, 0.0  # No mixup needed
+        # Mixup disabled - always return False
+        return False, 0.0
     
     def get_sampling_strategy_params(self) -> Dict[str, Any]:
         """Get parameters for sampling strategy"""
