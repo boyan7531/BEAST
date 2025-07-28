@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-def create_working_config(epochs=5, batch_size=4):
+def create_working_config(epochs=5, batch_size=2):
     """Create a working configuration"""
     return {
         'data': {
@@ -36,7 +36,7 @@ def create_working_config(epochs=5, batch_size=4):
             'learning_rate': 1e-4,
             'weight_decay': 1e-4,
             'num_workers': 8,  # Use multiple workers for faster data loading
-            'accumulation_steps': 4,
+            'accumulation_steps': 8,  # Compensate for smaller batch size
             'early_stopping_patience': 10
         },
         'enhanced_pipeline': {
@@ -152,6 +152,7 @@ def run_enhanced_training(epochs=10, batch_size=4):
             model.train()
             train_loss = 0.0
             train_batches = 0
+            accumulation_steps = config['training']['accumulation_steps']
             
             for batch_idx, (videos, action_labels, severity_labels, action_ids) in enumerate(train_dataloader):
                 # Move data to device
@@ -169,17 +170,23 @@ def run_enhanced_training(epochs=10, batch_size=4):
                     torch.argmax(severity_labels, dim=1)
                 )
                 
-                # Backward pass
-                total_loss.backward()
-                optimizer.step()
-                optimizer.zero_grad()
+                # Backward pass with gradient accumulation
+                (total_loss / accumulation_steps).backward()
+                
+                # Only step optimizer every accumulation_steps
+                if (batch_idx + 1) % accumulation_steps == 0:
+                    optimizer.step()
+                    optimizer.zero_grad()
                 
                 train_loss += total_loss.item()
                 train_batches += 1
                 
-                # Log progress
+                # Log progress and clear cache
                 if (batch_idx + 1) % 50 == 0:
                     print(f"  Batch {batch_idx + 1}/{len(train_dataloader)}: Loss = {total_loss.item():.4f}")
+                    # Clear GPU cache periodically
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
             
             avg_train_loss = train_loss / train_batches
             
@@ -268,11 +275,28 @@ def run_enhanced_training(epochs=10, batch_size=4):
             print(f"Severity Macro Recall: {severity_macro_recall:.4f}")
             print(f"Combined Macro Recall: {combined_macro_recall:.4f} (Best: {best_combined_recall:.4f})")
             
-            # Print minority class performance
-            print(f"Minority Class Performance:")
-            print(f"  Pushing (Action 4): {action_recall[4]:.4f}")
-            print(f"  Dive (Action 7): {action_recall[7]:.4f}")
-            print(f"  Red Card (Severity 3): {severity_recall[3]:.4f}")
+            # Print detailed per-class recalls
+            print(f"Action Class Recalls:")
+            action_class_names = ['Tackling', 'Standing tackling', 'High leg', 'Holding', 
+                                'Pushing', 'Elbowing', 'Challenge', 'Dive']
+            for i, (name, recall) in enumerate(zip(action_class_names, action_recall)):
+                status = "🎯" if i in [4, 7] else "  "  # Highlight minority classes
+                target = " (Target: 15%)" if i == 4 else " (Target: 10%)" if i == 7 else ""
+                print(f"  {status} {i}: {name}: {recall:.4f}{target}")
+            
+            print(f"Severity Class Recalls:")
+            severity_class_names = ['No offence', 'Offence + No card', 'Offence + Yellow card', 'Offence + Red card']
+            for i, (name, recall) in enumerate(zip(severity_class_names, severity_recall)):
+                status = "🎯" if i == 3 else "  "  # Highlight minority class
+                target = " (Target: 20%)" if i == 3 else ""
+                print(f"  {status} {i}: {name}: {recall:.4f}{target}")
+            
+            # Print minority class performance summary
+            print(f"🎯 Minority Class Progress:")
+            print(f"  Pushing (Action 4): {action_recall[4]:.4f} / 0.15 {'✅' if action_recall[4] >= 0.15 else '❌'}")
+            print(f"  Dive (Action 7): {action_recall[7]:.4f} / 0.10 {'✅' if action_recall[7] >= 0.10 else '❌'}")
+            print(f"  Red Card (Severity 3): {severity_recall[3]:.4f} / 0.20 {'✅' if severity_recall[3] >= 0.20 else '❌'}")
+            print(f"  Combined Target: {combined_macro_recall:.4f} / 0.45 {'✅' if combined_macro_recall >= 0.45 else '❌'}")
         
         print("\n🎉 Training Completed!")
         print("=" * 50)
