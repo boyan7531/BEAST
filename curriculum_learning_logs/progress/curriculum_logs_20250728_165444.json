@@ -1,0 +1,2654 @@
+{
+  "epoch_logs": [
+    {
+      "epoch": 0,
+      "timestamp": "2025-07-28T16:54:43.854258",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.0,
+        "overall_progress": 0.0,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 1
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.2680696141708136,
+        "action_macro_recall": 0.29171083796459346,
+        "severity_macro_recall": 0.18782827827987159,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.02,
+          0.75,
+          0.6,
+          0.01
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.01
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 1,
+      "timestamp": "2025-07-28T16:54:43.854307",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.1,
+        "overall_progress": 0.04,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 2
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.26062986738130267,
+        "action_macro_recall": 0.31598975884554825,
+        "severity_macro_recall": 0.20283453113597366,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.03,
+          0.75,
+          0.6,
+          0.018000000000000002
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.022
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 2,
+      "timestamp": "2025-07-28T16:54:43.854347",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.2,
+        "overall_progress": 0.08,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 3
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.2701248536705358,
+        "action_macro_recall": 0.3319540354101459,
+        "severity_macro_recall": 0.23515501562059432,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.04,
+          0.75,
+          0.6,
+          0.026000000000000002
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.034
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 3,
+      "timestamp": "2025-07-28T16:54:43.854382",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.3,
+        "overall_progress": 0.12,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 4
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.28829325754368484,
+        "action_macro_recall": 0.301178613798747,
+        "severity_macro_recall": 0.2479298401598292,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.05,
+          0.75,
+          0.6,
+          0.034
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.046
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 4,
+      "timestamp": "2025-07-28T16:54:43.854417",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.4,
+        "overall_progress": 0.16,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 5
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.28659992064981915,
+        "action_macro_recall": 0.367661654104118,
+        "severity_macro_recall": 0.25782557693442987,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.06,
+          0.75,
+          0.6,
+          0.042
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.058
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 5,
+      "timestamp": "2025-07-28T16:54:43.854453",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.5,
+        "overall_progress": 0.2,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 6
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.3000753588755496,
+        "action_macro_recall": 0.358769134522399,
+        "severity_macro_recall": 0.30541399170184386,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.07,
+          0.75,
+          0.6,
+          0.05000000000000001
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.06999999999999999
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 6,
+      "timestamp": "2025-07-28T16:54:43.854488",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.6,
+        "overall_progress": 0.24,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 7
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.34661631698289236,
+        "action_macro_recall": 0.37639834301211866,
+        "severity_macro_recall": 0.26947809881906293,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.08,
+          0.75,
+          0.6,
+          0.058
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.08199999999999999
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 7,
+      "timestamp": "2025-07-28T16:54:43.854521",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.7,
+        "overall_progress": 0.28,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 8
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.3804320019953264,
+        "action_macro_recall": 0.37156745651928197,
+        "severity_macro_recall": 0.3306756782574469,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.09000000000000001,
+          0.75,
+          0.6,
+          0.066
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.094
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 8,
+      "timestamp": "2025-07-28T16:54:43.854556",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.8,
+        "overall_progress": 0.32,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 9
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.3554927424329717,
+        "action_macro_recall": 0.4127501574496648,
+        "severity_macro_recall": 0.3541374819175055,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.1,
+          0.75,
+          0.6,
+          0.074
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.106
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 9,
+      "timestamp": "2025-07-28T16:54:43.854589",
+      "curriculum_stats": {
+        "current_stage": 0,
+        "current_stage_name": "Easy",
+        "stage_progress": 0.9,
+        "overall_progress": 0.36,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 10
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.3889627453981507,
+        "action_macro_recall": 0.42311709919519874,
+        "severity_macro_recall": 0.3420312202768873,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.11,
+          0.75,
+          0.6,
+          0.08199999999999999
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.118
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 10,
+      "timestamp": "2025-07-28T16:54:43.854635",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.0,
+        "overall_progress": 0.4,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 11
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.4313206771585438,
+        "action_macro_recall": 0.46276597379571616,
+        "severity_macro_recall": 0.4132017098846157,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.22000000000000003,
+          0.75,
+          0.6,
+          0.16500000000000004
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.28
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 0.0,
+          "3": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 0.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 0.0,
+          "3": 0.0,
+          "5": 0.0,
+          "6": 0.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 0.0
+        }
+      }
+    },
+    {
+      "epoch": 11,
+      "timestamp": "2025-07-28T16:54:43.854690",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.125,
+        "overall_progress": 0.44,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 12
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.5033440742162498,
+        "action_macro_recall": 0.4521528342701897,
+        "severity_macro_recall": 0.4560417043318082,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.23,
+          0.75,
+          0.6,
+          0.17300000000000001
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.29200000000000004
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 0.75,
+          "3": 0.75,
+          "5": 0.75,
+          "6": 0.75
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 0.75
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.0,
+          "3": 1.0,
+          "5": 1.0,
+          "6": 1.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.0
+        }
+      }
+    },
+    {
+      "epoch": 12,
+      "timestamp": "2025-07-28T16:54:43.854735",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.25,
+        "overall_progress": 0.48,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 13
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.47834393669078024,
+        "action_macro_recall": 0.48859744416247874,
+        "severity_macro_recall": 0.48159772199827683,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.24,
+          0.75,
+          0.6,
+          0.181
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.30400000000000005
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0
+        }
+      }
+    },
+    {
+      "epoch": 13,
+      "timestamp": "2025-07-28T16:54:43.854772",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.375,
+        "overall_progress": 0.52,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 14
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.48796754905202355,
+        "action_macro_recall": 0.4833018616051517,
+        "severity_macro_recall": 0.4738346075450682,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.25,
+          0.75,
+          0.6,
+          0.189
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.31600000000000006
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0
+        }
+      }
+    },
+    {
+      "epoch": 14,
+      "timestamp": "2025-07-28T16:54:43.854806",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.5,
+        "overall_progress": 0.56,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 15
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.4923364346218954,
+        "action_macro_recall": 0.518065693376333,
+        "severity_macro_recall": 0.50026147263259,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.26,
+          0.75,
+          0.6,
+          0.197
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.32800000000000007
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0
+        }
+      }
+    },
+    {
+      "epoch": 15,
+      "timestamp": "2025-07-28T16:54:43.854840",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.625,
+        "overall_progress": 0.6,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 16
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.4928182411527186,
+        "action_macro_recall": 0.5439067223600563,
+        "severity_macro_recall": 0.4949020031026308,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.27,
+          0.75,
+          0.6,
+          0.20500000000000002
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.34
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0
+        }
+      }
+    },
+    {
+      "epoch": 16,
+      "timestamp": "2025-07-28T16:54:43.854875",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.75,
+        "overall_progress": 0.64,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 17
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.5328722784536436,
+        "action_macro_recall": 0.544340603406414,
+        "severity_macro_recall": 0.5233477738126127,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.28,
+          0.75,
+          0.6,
+          0.21300000000000002
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.35200000000000004
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0
+        }
+      }
+    },
+    {
+      "epoch": 17,
+      "timestamp": "2025-07-28T16:54:43.854908",
+      "curriculum_stats": {
+        "current_stage": 1,
+        "current_stage_name": "Medium",
+        "stage_progress": 0.875,
+        "overall_progress": 0.68,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 18
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.5358178296469487,
+        "action_macro_recall": 0.5342280483601468,
+        "severity_macro_recall": 0.5266201098539331,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.29000000000000004,
+          0.75,
+          0.6,
+          0.22100000000000003
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.36400000000000005
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0
+        }
+      }
+    },
+    {
+      "epoch": 18,
+      "timestamp": "2025-07-28T16:54:43.854952",
+      "curriculum_stats": {
+        "current_stage": 2,
+        "current_stage_name": "Hard",
+        "stage_progress": 0.0,
+        "overall_progress": 0.72,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 19
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.6333034386505775,
+        "action_macro_recall": 0.5786826712574189,
+        "severity_macro_recall": 0.5936151332407407,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.4,
+          0.75,
+          0.6,
+          0.30400000000000005
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.526
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5,
+          "4": 0.0,
+          "7": 0.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 0.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0,
+          "4": 0.0,
+          "7": 0.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 0.0
+        }
+      }
+    },
+    {
+      "epoch": 19,
+      "timestamp": "2025-07-28T16:54:43.855003",
+      "curriculum_stats": {
+        "current_stage": 2,
+        "current_stage_name": "Hard",
+        "stage_progress": 0.14285714285714285,
+        "overall_progress": 0.76,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 20
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.6007370235371257,
+        "action_macro_recall": 0.6107150775983534,
+        "severity_macro_recall": 0.5935058910002439,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.41000000000000003,
+          0.75,
+          0.6,
+          0.31200000000000006
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.538
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5,
+          "4": 1.5,
+          "7": 1.5
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 2.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0,
+          "4": 3.0,
+          "7": 3.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 4.0
+        }
+      }
+    },
+    {
+      "epoch": 20,
+      "timestamp": "2025-07-28T16:54:43.855048",
+      "curriculum_stats": {
+        "current_stage": 2,
+        "current_stage_name": "Hard",
+        "stage_progress": 0.2857142857142857,
+        "overall_progress": 0.8,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 21
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.6029288028773121,
+        "action_macro_recall": 0.6147809033408149,
+        "severity_macro_recall": 0.6142444910940352,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.42000000000000004,
+          0.75,
+          0.6,
+          0.32000000000000006
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.55
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5,
+          "4": 3.0,
+          "7": 3.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 4.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0,
+          "4": 6.0,
+          "7": 6.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 8.0
+        }
+      }
+    },
+    {
+      "epoch": 21,
+      "timestamp": "2025-07-28T16:54:43.855081",
+      "curriculum_stats": {
+        "current_stage": 2,
+        "current_stage_name": "Hard",
+        "stage_progress": 0.42857142857142855,
+        "overall_progress": 0.84,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 22
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.619874573814344,
+        "action_macro_recall": 0.6063946318127413,
+        "severity_macro_recall": 0.6390677658173335,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.43,
+          0.75,
+          0.6,
+          0.32800000000000007
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.562
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5,
+          "4": 3.0,
+          "7": 3.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 4.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0,
+          "4": 6.0,
+          "7": 6.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 8.0
+        }
+      }
+    },
+    {
+      "epoch": 22,
+      "timestamp": "2025-07-28T16:54:43.855115",
+      "curriculum_stats": {
+        "current_stage": 2,
+        "current_stage_name": "Hard",
+        "stage_progress": 0.5714285714285714,
+        "overall_progress": 0.88,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 23
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.6726249301334082,
+        "action_macro_recall": 0.6631141591224218,
+        "severity_macro_recall": 0.7103800178643722,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.44,
+          0.75,
+          0.6,
+          0.3360000000000001
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.5740000000000001
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5,
+          "4": 3.0,
+          "7": 3.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 4.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0,
+          "4": 6.0,
+          "7": 6.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 8.0
+        }
+      }
+    },
+    {
+      "epoch": 23,
+      "timestamp": "2025-07-28T16:54:43.855148",
+      "curriculum_stats": {
+        "current_stage": 2,
+        "current_stage_name": "Hard",
+        "stage_progress": 0.7142857142857143,
+        "overall_progress": 0.92,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 24
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.7096472371702696,
+        "action_macro_recall": 0.6717262541976091,
+        "severity_macro_recall": 0.7085535534960207,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.45,
+          0.75,
+          0.6,
+          0.3440000000000001
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.5860000000000001
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5,
+          "4": 3.0,
+          "7": 3.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 4.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0,
+          "4": 6.0,
+          "7": 6.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 8.0
+        }
+      }
+    },
+    {
+      "epoch": 24,
+      "timestamp": "2025-07-28T16:54:43.855182",
+      "curriculum_stats": {
+        "current_stage": 2,
+        "current_stage_name": "Hard",
+        "stage_progress": 0.8571428571428571,
+        "overall_progress": 0.96,
+        "classes_introduced": {
+          "action": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7
+          ],
+          "severity": [
+            0,
+            1,
+            2,
+            3
+          ]
+        },
+        "total_stages": 3,
+        "stage_boundaries": [
+          [
+            0,
+            10
+          ],
+          [
+            10,
+            18
+          ],
+          [
+            18,
+            25
+          ]
+        ],
+        "performance_history_length": 25
+      },
+      "performance_metrics": {
+        "combined_macro_recall": 0.6886220418137183,
+        "action_macro_recall": 0.6783972970402453,
+        "severity_macro_recall": 0.7428720609636634,
+        "action_class_recall": [
+          0.85,
+          0.8,
+          0.7,
+          0.65,
+          0.46,
+          0.75,
+          0.6,
+          0.35200000000000004
+        ],
+        "severity_class_recall": [
+          0.9,
+          0.85,
+          0.7,
+          0.5980000000000001
+        ]
+      },
+      "loss_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 1.5,
+          "5": 1.5,
+          "6": 1.5,
+          "4": 3.0,
+          "7": 3.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 1.5,
+          "3": 4.0
+        }
+      },
+      "sampling_weights": {
+        "action": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 2.0,
+          "5": 2.0,
+          "6": 2.0,
+          "4": 6.0,
+          "7": 6.0
+        },
+        "severity": {
+          "0": 1.0,
+          "1": 1.0,
+          "2": 2.0,
+          "3": 8.0
+        }
+      }
+    }
+  ],
+  "stage_transitions": [
+    {
+      "epoch": 10,
+      "from_stage": 0,
+      "to_stage": 1,
+      "from_stage_name": "Easy",
+      "to_stage_name": "Medium"
+    },
+    {
+      "epoch": 18,
+      "from_stage": 1,
+      "to_stage": 2,
+      "from_stage_name": "Medium",
+      "to_stage_name": "Hard"
+    }
+  ],
+  "performance_trends": {
+    "combined_macro_recall": [
+      [
+        0,
+        0.2680696141708136
+      ],
+      [
+        1,
+        0.26062986738130267
+      ],
+      [
+        2,
+        0.2701248536705358
+      ],
+      [
+        3,
+        0.28829325754368484
+      ],
+      [
+        4,
+        0.28659992064981915
+      ],
+      [
+        5,
+        0.3000753588755496
+      ],
+      [
+        6,
+        0.34661631698289236
+      ],
+      [
+        7,
+        0.3804320019953264
+      ],
+      [
+        8,
+        0.3554927424329717
+      ],
+      [
+        9,
+        0.3889627453981507
+      ],
+      [
+        10,
+        0.4313206771585438
+      ],
+      [
+        11,
+        0.5033440742162498
+      ],
+      [
+        12,
+        0.47834393669078024
+      ],
+      [
+        13,
+        0.48796754905202355
+      ],
+      [
+        14,
+        0.4923364346218954
+      ],
+      [
+        15,
+        0.4928182411527186
+      ],
+      [
+        16,
+        0.5328722784536436
+      ],
+      [
+        17,
+        0.5358178296469487
+      ],
+      [
+        18,
+        0.6333034386505775
+      ],
+      [
+        19,
+        0.6007370235371257
+      ],
+      [
+        20,
+        0.6029288028773121
+      ],
+      [
+        21,
+        0.619874573814344
+      ],
+      [
+        22,
+        0.6726249301334082
+      ],
+      [
+        23,
+        0.7096472371702696
+      ],
+      [
+        24,
+        0.6886220418137183
+      ]
+    ],
+    "action_macro_recall": [
+      [
+        0,
+        0.29171083796459346
+      ],
+      [
+        1,
+        0.31598975884554825
+      ],
+      [
+        2,
+        0.3319540354101459
+      ],
+      [
+        3,
+        0.301178613798747
+      ],
+      [
+        4,
+        0.367661654104118
+      ],
+      [
+        5,
+        0.358769134522399
+      ],
+      [
+        6,
+        0.37639834301211866
+      ],
+      [
+        7,
+        0.37156745651928197
+      ],
+      [
+        8,
+        0.4127501574496648
+      ],
+      [
+        9,
+        0.42311709919519874
+      ],
+      [
+        10,
+        0.46276597379571616
+      ],
+      [
+        11,
+        0.4521528342701897
+      ],
+      [
+        12,
+        0.48859744416247874
+      ],
+      [
+        13,
+        0.4833018616051517
+      ],
+      [
+        14,
+        0.518065693376333
+      ],
+      [
+        15,
+        0.5439067223600563
+      ],
+      [
+        16,
+        0.544340603406414
+      ],
+      [
+        17,
+        0.5342280483601468
+      ],
+      [
+        18,
+        0.5786826712574189
+      ],
+      [
+        19,
+        0.6107150775983534
+      ],
+      [
+        20,
+        0.6147809033408149
+      ],
+      [
+        21,
+        0.6063946318127413
+      ],
+      [
+        22,
+        0.6631141591224218
+      ],
+      [
+        23,
+        0.6717262541976091
+      ],
+      [
+        24,
+        0.6783972970402453
+      ]
+    ],
+    "severity_macro_recall": [
+      [
+        0,
+        0.18782827827987159
+      ],
+      [
+        1,
+        0.20283453113597366
+      ],
+      [
+        2,
+        0.23515501562059432
+      ],
+      [
+        3,
+        0.2479298401598292
+      ],
+      [
+        4,
+        0.25782557693442987
+      ],
+      [
+        5,
+        0.30541399170184386
+      ],
+      [
+        6,
+        0.26947809881906293
+      ],
+      [
+        7,
+        0.3306756782574469
+      ],
+      [
+        8,
+        0.3541374819175055
+      ],
+      [
+        9,
+        0.3420312202768873
+      ],
+      [
+        10,
+        0.4132017098846157
+      ],
+      [
+        11,
+        0.4560417043318082
+      ],
+      [
+        12,
+        0.48159772199827683
+      ],
+      [
+        13,
+        0.4738346075450682
+      ],
+      [
+        14,
+        0.50026147263259
+      ],
+      [
+        15,
+        0.4949020031026308
+      ],
+      [
+        16,
+        0.5233477738126127
+      ],
+      [
+        17,
+        0.5266201098539331
+      ],
+      [
+        18,
+        0.5936151332407407
+      ],
+      [
+        19,
+        0.5935058910002439
+      ],
+      [
+        20,
+        0.6142444910940352
+      ],
+      [
+        21,
+        0.6390677658173335
+      ],
+      [
+        22,
+        0.7103800178643722
+      ],
+      [
+        23,
+        0.7085535534960207
+      ],
+      [
+        24,
+        0.7428720609636634
+      ]
+    ]
+  },
+  "summary": {
+    "total_epochs_logged": 25,
+    "total_stage_transitions": 2,
+    "metrics_tracked": [
+      "combined_macro_recall",
+      "action_macro_recall",
+      "severity_macro_recall"
+    ]
+  }
+}
