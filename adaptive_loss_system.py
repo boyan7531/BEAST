@@ -98,6 +98,14 @@ class AdaptiveFocalLoss(nn.Module):
         Returns:
             Focal loss tensor
         """
+        # Ensure all tensors are on the same device as inputs
+        device = inputs.device
+        if self.gamma.device != device:
+            self.gamma = self.gamma.to(device)
+        if self.alpha.device != device:
+            self.alpha = self.alpha.to(device)
+        if self.class_weights.device != device:
+            self.class_weights = self.class_weights.to(device)
         # Apply label smoothing if specified
         if self.label_smoothing > 0:
             smooth_targets = self._apply_label_smoothing(targets, inputs.size(1))
@@ -107,7 +115,7 @@ class AdaptiveFocalLoss(nn.Module):
         else:
             # Standard cross-entropy loss
             log_probs = F.log_softmax(inputs, dim=1)
-            ce_loss = F.nll_loss(log_probs, targets, reduction='none', weight=self.class_weights)
+            ce_loss = F.nll_loss(log_probs, targets, reduction='none', weight=self.class_weights.to(inputs.device) if self.class_weights is not None else None)
             pt = torch.exp(log_probs.gather(1, targets.unsqueeze(1))).squeeze(1)
             loss = ce_loss
         
@@ -116,8 +124,8 @@ class AdaptiveFocalLoss(nn.Module):
         for i in range(self.num_classes):
             class_mask = (targets == i)
             if class_mask.any():
-                gamma_i = self.gamma[i]
-                alpha_i = self.alpha[i]
+                gamma_i = self.gamma[i].to(inputs.device)
+                alpha_i = self.alpha[i].to(inputs.device)
                 focal_term = alpha_i * (1 - pt[class_mask]) ** gamma_i
                 focal_weights[class_mask] = focal_term
         
@@ -240,6 +248,14 @@ class ClassBalanceLoss(nn.Module):
         Returns:
             Class balance loss tensor
         """
+        # Ensure all tensors are on the same device as inputs
+        device = inputs.device
+        if self.class_weights.device != device:
+            self.class_weights = self.class_weights.to(device)
+        if self.class_counts.device != device:
+            self.class_counts = self.class_counts.to(device)
+        if self.total_samples.device != device:
+            self.total_samples = self.total_samples.to(device)
         # Update class counts
         self._update_class_counts(targets)
         
