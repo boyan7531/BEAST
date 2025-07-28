@@ -35,7 +35,7 @@ def create_working_config(epochs=5, batch_size=4):
             'batch_size': batch_size,
             'learning_rate': 1e-4,
             'weight_decay': 1e-4,
-            'num_workers': 0,
+            'num_workers': 8,  # Use multiple workers for faster data loading
             'accumulation_steps': 4,
             'early_stopping_patience': 10
         },
