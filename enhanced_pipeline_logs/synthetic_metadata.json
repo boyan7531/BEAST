@@ -1,0 +1,59 @@
+{
+  "timestamp": "2025-07-28T17:43:33.139841",
+  "config": {
+    "enabled": true,
+    "synthetic_generation": {
+      "target_classes": {
+        "action": {
+          "4": 20,
+          "7": 20
+        },
+        "severity": {
+          "3": 40
+        }
+      },
+      "mixup_alpha": 0.4,
+      "temporal_alpha": 0.3
+    },
+    "quality_validation": {
+      "feature_similarity_threshold": 0.7,
+      "temporal_consistency_threshold": 0.8,
+      "label_consistency_threshold": 0.9
+    },
+    "stratified_sampling": {
+      "min_minority_per_batch": 1,
+      "minority_threshold": 0.05
+    },
+    "advanced_augmentation": {
+      "temporal_jitter_range": [
+        0.8,
+        1.2
+      ],
+      "spatial_jitter_prob": 0.5,
+      "color_jitter_prob": 0.3,
+      "gaussian_noise_prob": 0.2,
+      "frame_dropout_prob": 0.1
+    }
+  },
+  "generation_stats": {
+    "total_synthetic_samples": 80,
+    "target_classes": {
+      "action": {
+        "4": 20,
+        "7": 20
+      },
+      "severity": {
+        "3": 40
+      }
+    }
+  },
+  "validation_stats": {
+    "total_samples": 80,
+    "passed_samples": 39,
+    "pass_rate": 0.4875,
+    "avg_feature_similarity": 0.743583312414943,
+    "avg_temporal_consistency": 0.8223887038257441,
+    "avg_label_consistency": 0.8700856473445612,
+    "avg_quality_score": 0.7897135047084249
+  }
+}

@@ -186,9 +186,12 @@ class EnhancedDataPipelineManager:
         self.synthetic_samples = self.mixup_generator.generate_synthetic_samples()
         
         # Initialize quality validator
-        self.quality_validator = SyntheticQualityValidator(
-            **self.config['quality_validation']
-        )
+        quality_config = self.config.get('quality_validation', {
+            'feature_similarity_threshold': 0.7,
+            'temporal_consistency_threshold': 0.8,
+            'label_consistency_threshold': 0.9
+        })
+        self.quality_validator = SyntheticQualityValidator(**quality_config)
         
         # Validate synthetic samples
         logger.info("Validating synthetic samples...")
