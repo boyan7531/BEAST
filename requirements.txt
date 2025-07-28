@@ -1,3 +1,17 @@
 SoccerNet
 natsort
 tqdm
+torch
+torchvision
+torchaudio
+numpy
+opencv-python
+scikit-learn
+eva-decord
+Pillow
+matplotlib
+seaborn
+pandas
+scipy
+tensorboard
+wandb

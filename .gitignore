@@ -19,3 +19,4 @@ rebalancing_logs
 cleaned_training_log.txt
 *.sh
 trained
+*.md
